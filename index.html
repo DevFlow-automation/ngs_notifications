@@ -61,42 +61,51 @@
             padding: 4px;
             border-radius: 4px;
         }
+        .tab-btn {
+            transition: all 0.2s ease-in-out;
+        }
     </style>
 </head>
 <body class="bg-tgBg text-tgText p-5 font-sans">
-    <h2 class="text-xl font-bold mb-4">Рассылка уведомлений</h2>
+    <h2 class="text-xl font-bold mb-4">Панель управления</h2>
     
-    <div class="bg-white p-4 rounded shadow-sm border border-gray-200 mb-8">
-        <label for="target_type" class="block mb-2 font-medium">Тип рассылки:</label>
-        <select id="target_type" class="w-full mb-4 p-3 border rounded border-gray-300 text-black bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="toggleFields()">
-            <option value="all">Всем родителям</option>
-            <option value="class">Определенному классу</option>
-            <option value="student">Конкретному ученику (родителю)</option>
-        </select>
-        
-        <div id="class_block" class="hidden mb-4">
-            <label for="class_select" class="block mb-2 font-medium">Выберите класс:</label>
-            <select id="class_select" class="w-full p-3 border rounded border-gray-300 text-black bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="handleClassChange()">
-                <option value="">-- Выберите класс --</option>
+    <div class="flex border-b border-gray-300 mb-6">
+        <button id="btn_send" onclick="switchTab('send')" class="tab-btn py-2 px-4 border-b-2 font-medium text-blue-600 border-blue-600 focus:outline-none">Рассылка</button>
+        <button id="btn_history" onclick="switchTab('history')" class="tab-btn py-2 px-4 border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300 focus:outline-none">История</button>
+    </div>
+    
+    <div id="tab_send">
+        <div class="bg-white p-4 rounded shadow-sm border border-gray-200 mb-8">
+            <label for="target_type" class="block mb-2 font-medium">Тип рассылки:</label>
+            <select id="target_type" class="w-full mb-4 p-3 border rounded border-gray-300 text-black bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="toggleFields()">
+                <option value="all">Всем родителям</option>
+                <option value="class">Определенному классу</option>
+                <option value="student">Конкретному ученику (родителю)</option>
             </select>
-        </div>
+            
+            <div id="class_block" class="hidden mb-4">
+                <label for="class_select" class="block mb-2 font-medium">Выберите класс:</label>
+                <select id="class_select" class="w-full p-3 border rounded border-gray-300 text-black bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="handleClassChange()">
+                    <option value="">-- Выберите класс --</option>
+                </select>
+            </div>
 
-        <div id="student_block" class="hidden mb-4">
-            <label for="student_select" class="block mb-2 font-medium">Выберите ученика:</label>
-            <select id="student_select" class="w-full p-3 border rounded border-gray-300 text-black bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">-- Выберите ученика --</option>
-            </select>
+            <div id="student_block" class="hidden mb-4">
+                <label for="student_select" class="block mb-2 font-medium">Выберите ученика:</label>
+                <select id="student_select" class="w-full p-3 border rounded border-gray-300 text-black bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">-- Выберите ученика --</option>
+                </select>
+            </div>
+            
+            <label for="message" class="block mb-2 font-medium">Текст сообщения:</label>
+            <textarea id="message" class="w-full h-32 p-3 mb-4 border rounded border-gray-300 resize-y text-black bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Введите текст оповещения..."></textarea>
+            
+            <button onclick="sendMessage()" class="w-full bg-tgBtn text-tgBtnText p-4 rounded font-bold hover:opacity-90 transition-opacity">Отправить</button>
+            <p id="status" class="mt-4 font-medium text-center"></p>
         </div>
-        
-        <label for="message" class="block mb-2 font-medium">Текст сообщения:</label>
-        <textarea id="message" class="w-full h-32 p-3 mb-4 border rounded border-gray-300 resize-y text-black bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Введите текст оповещения..."></textarea>
-        
-        <button onclick="sendMessage()" class="w-full bg-tgBtn text-tgBtnText p-4 rounded font-bold hover:opacity-90 transition-opacity">Отправить</button>
-        <p id="status" class="mt-4 font-medium text-center"></p>
     </div>
 
-    <div class="border-t border-gray-300 pt-6">
-        <h3 class="text-lg font-bold mb-4">История рассылок (последние 50)</h3>
+    <div id="tab_history" class="hidden">
         <div class="table-container bg-white rounded shadow-sm border border-gray-200">
             <table class="text-black">
                 <thead>
@@ -121,6 +130,29 @@
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
+
+        function switchTab(tabId) {
+            const tabSend = document.getElementById('tab_send');
+            const tabHistory = document.getElementById('tab_history');
+            const btnSend = document.getElementById('btn_send');
+            const btnHistory = document.getElementById('btn_history');
+
+            if (tabId === 'send') {
+                tabSend.classList.remove('hidden');
+                tabHistory.classList.add('hidden');
+                
+                btnSend.className = "tab-btn py-2 px-4 border-b-2 font-medium text-blue-600 border-blue-600 focus:outline-none";
+                btnHistory.className = "tab-btn py-2 px-4 border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300 focus:outline-none";
+            } else {
+                tabSend.classList.add('hidden');
+                tabHistory.classList.remove('hidden');
+                
+                btnHistory.className = "tab-btn py-2 px-4 border-b-2 font-medium text-blue-600 border-blue-600 focus:outline-none";
+                btnSend.className = "tab-btn py-2 px-4 border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300 focus:outline-none";
+                
+                loadHistory(); 
+            }
+        }
 
         async function loadClasses() {
             try {
@@ -287,7 +319,8 @@
                 if (result.status === 'success') {
                     showStatus(`Успешно отправлено ${result.count} родителям.`, 'text-green-500');
                     document.getElementById('message').value = '';
-                    loadHistory();
+                    
+                    setTimeout(() => switchTab('history'), 1500);
                 } else {
                     showStatus('Ошибка на сервере при отправке.', 'text-red-500');
                 }
