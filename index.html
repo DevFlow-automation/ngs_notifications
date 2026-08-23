@@ -69,9 +69,12 @@
 <body class="bg-tgBg text-tgText p-5 font-sans">
     <h2 class="text-xl font-bold mb-4">Панель управления</h2>
     
-    <div class="flex border-b border-gray-300 mb-6">
-        <button id="btn_send" onclick="switchTab('send')" class="tab-btn py-2 px-4 border-b-2 font-medium text-blue-600 border-blue-600 focus:outline-none">Рассылка</button>
-        <button id="btn_history" onclick="switchTab('history')" class="tab-btn py-2 px-4 border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300 focus:outline-none">История</button>
+    <div class="flex justify-between items-center border-b border-gray-300 mb-6">
+        <div class="flex">
+            <button id="btn_send" onclick="switchTab('send')" class="tab-btn py-2 px-4 border-b-2 font-medium text-blue-600 border-blue-600 focus:outline-none">Рассылка</button>
+            <button id="btn_history" onclick="switchTab('history')" class="tab-btn py-2 px-4 border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300 focus:outline-none">История</button>
+        </div>
+        <a href="/api/export" target="_blank" class="mb-2 bg-green-500 hover:bg-green-600 text-white text-sm py-2 px-4 rounded font-medium shadow-sm transition-colors">📥 Скачать базу (Excel)</a>
     </div>
     
     <div id="tab_send">
@@ -96,6 +99,15 @@
                     <option value="">-- Выберите ученика --</option>
                 </select>
             </div>
+
+            <label for="template_select" class="block mb-2 font-medium">Шаблоны сообщений:</label>
+            <select id="template_select" class="w-full mb-4 p-3 border rounded border-gray-300 text-black bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="applyTemplate()">
+                <option value="">-- Ввести текст вручную --</option>
+                <option value="Уважаемые родители! Напоминаем, что завтра состоится родительское собрание. Явка обязательна.">Родительское собрание</option>
+                <option value="Внимание! В связи с погодными условиями занятия сегодня отменяются.">Отмена занятий</option>
+                <option value="Уважаемые родители, просим срочно заполнить и передать классному руководителю форму согласия.">Сбор документов</option>
+                <option value="Напоминаем о необходимости своевременной оплаты за обучение.">Оплата за обучение</option>
+            </select>
             
             <label for="message" class="block mb-2 font-medium">Текст сообщения:</label>
             <textarea id="message" class="w-full h-32 p-3 mb-4 border rounded border-gray-300 resize-y text-black bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Введите текст оповещения..."></textarea>
@@ -115,12 +127,13 @@
                         <th>Родитель</th>
                         <th>Сообщение</th>
                         <th>Тип</th>
+                        <th>Ознакомились</th>
                         <th>Время</th>
                     </tr>
                 </thead>
                 <tbody id="history_tbody">
                     <tr>
-                        <td colspan="6" class="text-center py-4 text-gray-500">Загрузка истории...</td>
+                        <td colspan="7" class="text-center py-4 text-gray-500">Загрузка истории...</td>
                     </tr>
                 </tbody>
             </table>
@@ -154,6 +167,13 @@
             }
         }
 
+        function applyTemplate() {
+            const template = document.getElementById('template_select').value;
+            if (template) {
+                document.getElementById('message').value = template;
+            }
+        }
+
         async function loadClasses() {
             try {
                 const response = await fetch('/api/classes');
@@ -180,7 +200,7 @@
                 tbody.innerHTML = '';
                 
                 if (data.history.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-500">История рассылок пуста.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-gray-500">История рассылок пуста.</td></tr>';
                     return;
                 }
 
@@ -229,12 +249,13 @@
                             </span>
                         </td>
                         <td><span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs font-medium">${typeLabel}</span></td>
+                        <td><span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-bold">${item.ack_count}</span></td>
                         <td class="text-gray-500 whitespace-nowrap">${item.time}</td>
                     `;
                     tbody.appendChild(tr);
                 });
             } catch (error) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-red-500">Ошибка загрузки истории.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-red-500">Ошибка загрузки истории.</td></tr>';
             }
         }
 
@@ -319,6 +340,7 @@
                 if (result.status === 'success') {
                     showStatus(`Успешно отправлено ${result.count} родителям.`, 'text-green-500');
                     document.getElementById('message').value = '';
+                    document.getElementById('template_select').value = '';
                     
                     setTimeout(() => switchTab('history'), 1500);
                 } else {
