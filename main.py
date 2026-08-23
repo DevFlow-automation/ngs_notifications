@@ -247,9 +247,25 @@ async def get_history():
         data = []
         for msg in history:
             time_str = msg.timestamp.strftime("%d.%m.%Y %H:%M") if msg.timestamp else ""
+            
+            target_display = msg.recipient_id
+            if target_display == 'all':
+                target_display = "Всем родителям"
+            elif target_display.isdigit():
+                parent_result = await db_session.execute(
+                    select(Parent).where(Parent.telegram_id == int(msg.recipient_id)).limit(1)
+                )
+                parent = parent_result.scalar_one_or_none()
+                if parent:
+                    target_display = f"{parent.parent_full_name} (реб. {parent.child_full_name}, {parent.school_class})"
+                else:
+                    target_display = f"Удаленный профиль (ID: {msg.recipient_id})"
+            else:
+                target_display = f"Класс {msg.recipient_id}"
+                
             data.append({
                 "id": msg.id,
-                "target": msg.recipient_id,
+                "target": target_display,
                 "text": msg.message_text,
                 "time": time_str
             })
