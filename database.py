@@ -40,6 +40,14 @@ class MessageHistory(Base):
     message_text: Mapped[str] = mapped_column(Text)
     timestamp: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
 
+class Acknowledgment(Base):
+    __tablename__ = 'acknowledgments'
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    history_id: Mapped[int] = mapped_column(Integer)
+    telegram_id: Mapped[int] = mapped_column(BigInteger)
+    timestamp: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
