@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
@@ -33,6 +33,10 @@ class Registration(StatesGroup):
     waiting_for_phone = State()
     waiting_for_address = State()
 
+class AddChild(StatesGroup):
+    waiting_for_child_name = State()
+    waiting_for_school_class = State()
+
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     if message.from_user.id == ADMIN_ID:
@@ -46,9 +50,16 @@ async def cmd_start(message: types.Message, state: FSMContext):
         return
 
     async with async_session() as session:
-        parent = await session.get(Parent, message.from_user.id)
+        result = await session.execute(
+            select(Parent).where(Parent.telegram_id == message.from_user.id).limit(1)
+        )
+        parent = result.scalar_one_or_none()
+        
         if parent:
-            await message.answer("Вы уже зарегистрированы в системе оповещений.")
+            await message.answer(
+                "Вы уже зарегистрированы в системе оповещений.\n\n"
+                "Если вы хотите добавить данные еще одного ребенка, отправьте команду /add_child"
+            )
             return
 
     welcome_text = (
@@ -132,6 +143,60 @@ async def process_address(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("Регистрация успешно завершена! Теперь вы будете получать оповещения.")
 
+@dp.message(Command("add_child"))
+async def cmd_add_child(message: types.Message, state: FSMContext):
+    async with async_session() as session:
+        result = await session.execute(
+            select(Parent).where(Parent.telegram_id == message.from_user.id).limit(1)
+        )
+        parent = result.scalar_one_or_none()
+        
+        if not parent:
+            await message.answer("Сначала пройдите основную регистрацию через команду /start.")
+            return
+            
+        await state.update_data(
+            parent_full_name=parent.parent_full_name,
+            email=parent.email,
+            phone=parent.phone,
+            address=parent.address
+        )
+        
+    await message.answer("Введите ФИО еще одного вашего ребенка:")
+    await state.set_state(AddChild.waiting_for_child_name)
+
+@dp.message(AddChild.waiting_for_child_name, F.text)
+async def process_additional_child_name(message: types.Message, state: FSMContext):
+    await state.update_data(child_full_name=message.text)
+    await message.answer("Введите класс, в котором учится этот ребенок (число от 1 до 11 и буква, например, 5А):")
+    await state.set_state(AddChild.waiting_for_school_class)
+
+@dp.message(AddChild.waiting_for_school_class, F.text)
+async def process_additional_school_class(message: types.Message, state: FSMContext):
+    school_class = message.text.replace(" ", "").upper()
+    
+    if not re.fullmatch(r"^(1[0-1]|[1-9])[А-Я]$", school_class):
+        await message.answer("Неверный формат. Введите существующий класс (например, 5А или 11Б):")
+        return
+
+    data = await state.get_data()
+    
+    async with async_session() as session:
+        new_parent = Parent(
+            telegram_id=message.from_user.id,
+            parent_full_name=data['parent_full_name'],
+            child_full_name=data['child_full_name'],
+            school_class=school_class,
+            email=data['email'],
+            phone=data['phone'],
+            address=data['address']
+        )
+        session.add(new_parent)
+        await session.commit()
+
+    await state.clear()
+    await message.answer("Данные второго ребенка успешно добавлены! Теперь вы будете получать оповещения и для этого класса.")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
@@ -196,14 +261,14 @@ async def get_history():
 async def send_message(data: MessageData):
     async with async_session() as db_session:
         if data.target_type == 'all':
-            result = await db_session.execute(select(Parent.telegram_id))
+            result = await db_session.execute(select(Parent.telegram_id).distinct())
         elif data.target_type == 'class':
             result = await db_session.execute(
-                select(Parent.telegram_id).where(Parent.school_class == data.target_value)
+                select(Parent.telegram_id).where(Parent.school_class == data.target_value).distinct()
             )
         elif data.target_type == 'student':
             result = await db_session.execute(
-                select(Parent.telegram_id).where(Parent.telegram_id == int(data.target_value))
+                select(Parent.telegram_id).where(Parent.telegram_id == int(data.target_value)).distinct()
             )
         else:
             return {"status": "error"}
