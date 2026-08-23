@@ -1,7 +1,7 @@
 import os
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, BigInteger, Text, DateTime, func
+from sqlalchemy import String, BigInteger, Text, DateTime, func, Integer
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,7 +12,6 @@ if db_url.startswith("postgres://"):
 elif db_url.startswith("postgresql://"):
     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-# Исправление для совместимости с базой данных Neon
 db_url = db_url.replace("sslmode=require", "ssl=require")
 
 engine = create_async_engine(db_url, echo=False)
@@ -24,7 +23,8 @@ class Base(AsyncAttrs, DeclarativeBase):
 class Parent(Base):
     __tablename__ = 'parents'
     
-    telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger)
     parent_full_name: Mapped[str] = mapped_column(String(100))
     child_full_name: Mapped[str] = mapped_column(String(100))
     school_class: Mapped[str] = mapped_column(String(20))
