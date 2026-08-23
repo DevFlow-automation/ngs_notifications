@@ -1,19 +1,21 @@
 import asyncio
 import os
 import re
+import io
+import openpyxl
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
-from sqlalchemy import select, desc
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
+from sqlalchemy import select, desc, func
 from dotenv import load_dotenv
 
-from database import init_db, async_session, Parent, MessageHistory
+from database import init_db, async_session, Parent, MessageHistory, Acknowledgment
 
 load_dotenv()
 
@@ -197,6 +199,25 @@ async def process_additional_school_class(message: types.Message, state: FSMCont
     await state.clear()
     await message.answer("Данные второго ребенка успешно добавлены! Теперь вы будете получать оповещения и для этого класса.")
 
+@dp.callback_query(F.data.startswith("ack_"))
+async def process_acknowledgment(callback: types.CallbackQuery):
+    history_id = int(callback.data.split("_")[1])
+    
+    async with async_session() as session:
+        result = await session.execute(
+            select(Acknowledgment).where(
+                Acknowledgment.history_id == history_id,
+                Acknowledgment.telegram_id == callback.from_user.id
+            )
+        )
+        if not result.scalar_one_or_none():
+            new_ack = Acknowledgment(history_id=history_id, telegram_id=callback.from_user.id)
+            session.add(new_ack)
+            await session.commit()
+            
+    await callback.answer("Вы подтвердили ознакомление!", show_alert=False)
+    await callback.message.edit_reply_markup(reply_markup=None)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
@@ -246,6 +267,11 @@ async def get_history():
         
         data = []
         for msg in history:
+            ack_result = await db_session.execute(
+                select(func.count(Acknowledgment.id)).where(Acknowledgment.history_id == msg.id)
+            )
+            ack_count = ack_result.scalar() or 0
+            
             time_str = msg.timestamp.strftime("%d.%m.%Y %H:%M") if msg.timestamp else ""
             
             target_display = msg.recipient_id
@@ -267,7 +293,8 @@ async def get_history():
                 "id": msg.id,
                 "target": target_display,
                 "text": msg.message_text,
-                "time": time_str
+                "time": time_str,
+                "ack_count": ack_count
             })
             
     return {"history": data}
@@ -289,19 +316,104 @@ async def send_message(data: MessageData):
             return {"status": "error"}
             
         parent_ids = [row[0] for row in result.all()]
+        if not parent_ids:
+            return {"status": "error", "message": "Нет получателей"}
+            
+        new_msg = MessageHistory(recipient_id=data.target_value, message_text=data.text)
+        db_session.add(new_msg)
+        await db_session.flush()
         
+        markup = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="Ознакомлен ✅", callback_data=f"ack_{new_msg.id}")]]
+        )
+        
+        success_count = 0
         for pid in parent_ids:
             try:
-                await bot.send_message(chat_id=pid, text=data.text)
+                await bot.send_message(chat_id=pid, text=data.text, reply_markup=markup)
+                success_count += 1
                 await asyncio.sleep(0.05)
             except Exception as e:
                 print(f"Ошибка отправки пользователю {pid}: {e}")
                 
-        new_msg = MessageHistory(recipient_id=data.target_value, message_text=data.text)
-        db_session.add(new_msg)
         await db_session.commit()
         
-    return {"status": "success", "count": len(parent_ids)}
+    return {"status": "success", "count": success_count}
+
+@app.get("/api/export")
+async def export_excel():
+    async with async_session() as db_session:
+        result_parents = await db_session.execute(select(Parent).order_by(Parent.school_class, Parent.parent_full_name))
+        parents = result_parents.scalars().all()
+        
+        result_history = await db_session.execute(select(MessageHistory).order_by(desc(MessageHistory.timestamp)))
+        history = result_history.scalars().all()
+
+    wb = openpyxl.Workbook()
+    
+    # Лист 1: База родителей
+    ws1 = wb.active
+    ws1.title = "База родителей"
+    
+    headers_parents = ["ID", "Telegram ID", "ФИО Родителя", "ФИО Ребенка", "Класс", "Email", "Телефон", "Адрес"]
+    ws1.append(headers_parents)
+
+    for p in parents:
+        ws1.append([p.id, p.telegram_id, p.parent_full_name, p.child_full_name, p.school_class, p.email, p.phone, p.address])
+        
+    # Форматирование ширины столбцов
+    for col in ['C', 'D', 'E', 'F', 'G', 'H']:
+        ws1.column_dimensions[col].width = 25
+
+    # Лист 2: История рассылок
+    ws2 = wb.create_sheet(title="История рассылок")
+    headers_history = ["ID Отправки", "Дата и время", "Получатель(и)", "Текст сообщения", "Кол-во подтверждений"]
+    ws2.append(headers_history)
+    
+    async with async_session() as session:
+        for msg in history:
+            ack_result = await session.execute(
+                select(func.count(Acknowledgment.id)).where(Acknowledgment.history_id == msg.id)
+            )
+            ack_count = ack_result.scalar() or 0
+            
+            time_str = msg.timestamp.strftime("%d.%m.%Y %H:%M") if msg.timestamp else ""
+            
+            target_display = msg.recipient_id
+            if target_display == 'all':
+                target_display = "Всем родителям"
+            elif target_display.isdigit():
+                parent_result = await session.execute(
+                    select(Parent).where(Parent.telegram_id == int(msg.recipient_id)).limit(1)
+                )
+                parent = parent_result.scalar_one_or_none()
+                if parent:
+                    target_display = f"{parent.parent_full_name} (Класс {parent.school_class})"
+                else:
+                    target_display = f"ID: {msg.recipient_id}"
+            else:
+                target_display = f"Класс {msg.recipient_id}"
+                
+            ws2.append([msg.id, time_str, target_display, msg.message_text, ack_count])
+            
+    # Форматирование ширины столбцов
+    ws2.column_dimensions['B'].width = 20
+    ws2.column_dimensions['C'].width = 30
+    ws2.column_dimensions['D'].width = 50
+    ws2.column_dimensions['E'].width = 25
+
+    stream = io.BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+
+    headers = {
+        'Content-Disposition': 'attachment; filename="school_database_and_history.xlsx"'
+    }
+    return StreamingResponse(
+        stream, 
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+        headers=headers
+    )
 
 @app.get("/", response_class=HTMLResponse)
 async def get_html():
