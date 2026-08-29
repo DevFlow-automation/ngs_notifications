@@ -25,7 +25,7 @@ WEBHOOK_PATH = "/webhook"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
-ADMIN_ID = 8771384583
+ADMIN_ID = [8771384583,229049117]
 
 class Registration(StatesGroup):
     waiting_for_parent_name = State()
@@ -41,7 +41,7 @@ class AddChild(StatesGroup):
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
-    if message.from_user.id == ADMIN_ID:
+    if message.from_user.id in ADMIN_ID:
         kb = ReplyKeyboardMarkup(
             keyboard=[
                 [KeyboardButton(text="Панель рассылки", web_app=WebAppInfo(url=WEBAPP_URL))]
