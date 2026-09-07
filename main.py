@@ -25,7 +25,7 @@ WEBHOOK_PATH = "/webhook"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
-ADMIN_ID = [8771384583,229049117]
+ADMIN_ID = 8771384583
 
 class Registration(StatesGroup):
     waiting_for_parent_name = State()
@@ -41,7 +41,7 @@ class AddChild(StatesGroup):
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
-    if message.from_user.id in ADMIN_ID:
+    if message.from_user.id == ADMIN_ID:
         kb = ReplyKeyboardMarkup(
             keyboard=[
                 [KeyboardButton(text="Панель рассылки", web_app=WebAppInfo(url=WEBAPP_URL))]
@@ -251,10 +251,10 @@ async def get_classes():
 async def get_students(class_name: str):
     async with async_session() as db_session:
         result = await db_session.execute(
-            select(Parent.telegram_id, Parent.child_full_name)
+            select(Parent.telegram_id, Parent.child_full_name, Parent.parent_full_name)
             .where(Parent.school_class == class_name)
         )
-        students = [{"telegram_id": str(row[0]), "child_full_name": row[1]} for row in result.all()]
+        students = [{"telegram_id": str(row[0]), "child_full_name": row[1], "parent_full_name": row[2]} for row in result.all()]
     return {"students": students}
 
 @app.get("/api/history")
@@ -351,7 +351,6 @@ async def export_excel():
 
     wb = openpyxl.Workbook()
     
-    # Лист 1: База родителей
     ws1 = wb.active
     ws1.title = "База родителей"
     
@@ -361,11 +360,9 @@ async def export_excel():
     for p in parents:
         ws1.append([p.id, p.telegram_id, p.parent_full_name, p.child_full_name, p.school_class, p.email, p.phone, p.address])
         
-    # Форматирование ширины столбцов
     for col in ['C', 'D', 'E', 'F', 'G', 'H']:
         ws1.column_dimensions[col].width = 25
 
-    # Лист 2: История рассылок
     ws2 = wb.create_sheet(title="История рассылок")
     headers_history = ["ID Отправки", "Дата и время", "Получатель(и)", "Текст сообщения", "Кол-во подтверждений"]
     ws2.append(headers_history)
@@ -396,7 +393,6 @@ async def export_excel():
                 
             ws2.append([msg.id, time_str, target_display, msg.message_text, ack_count])
             
-    # Форматирование ширины столбцов
     ws2.column_dimensions['B'].width = 20
     ws2.column_dimensions['C'].width = 30
     ws2.column_dimensions['D'].width = 50
