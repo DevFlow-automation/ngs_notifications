@@ -95,8 +95,15 @@
 
             <div id="student_block" class="hidden mb-4">
                 <label for="student_select" class="block mb-2 font-medium">Выберите ученика:</label>
-                <select id="student_select" class="w-full p-3 border rounded border-gray-300 text-black bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <select id="student_select" class="w-full p-3 border rounded border-gray-300 text-black bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="handleStudentChange()">
                     <option value="">-- Выберите ученика --</option>
+                </select>
+            </div>
+
+            <div id="parent_block" class="hidden mb-4">
+                <label for="parent_select" class="block mb-2 font-medium">Выберите родителя:</label>
+                <select id="parent_select" class="w-full p-3 border rounded border-gray-300 text-black bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">-- Выберите родителя --</option>
                 </select>
             </div>
 
@@ -143,6 +150,8 @@
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
+        
+        let currentClassData = [];
 
         function switchTab(tabId) {
             const tabSend = document.getElementById('tab_send');
@@ -263,13 +272,16 @@
             const type = document.getElementById('target_type').value;
             const classBlock = document.getElementById('class_block');
             const studentBlock = document.getElementById('student_block');
+            const parentBlock = document.getElementById('parent_block');
             
             if (type === 'all') {
                 classBlock.classList.add('hidden');
                 studentBlock.classList.add('hidden');
+                parentBlock.classList.add('hidden');
             } else if (type === 'class') {
                 classBlock.classList.remove('hidden');
                 studentBlock.classList.add('hidden');
+                parentBlock.classList.add('hidden');
             } else if (type === 'student') {
                 classBlock.classList.remove('hidden');
                 studentBlock.classList.remove('hidden');
@@ -281,18 +293,26 @@
             const type = document.getElementById('target_type').value;
             const className = document.getElementById('class_select').value;
             const studentSelect = document.getElementById('student_select');
+            const parentBlock = document.getElementById('parent_block');
             
+            parentBlock.classList.add('hidden');
+            document.getElementById('parent_select').innerHTML = '<option value="">-- Выберите родителя --</option>';
+
             if (type === 'student' && className) {
                 studentSelect.innerHTML = '<option value="">Загрузка...</option>';
                 try {
                     const response = await fetch(`/api/students/${className}`);
                     const data = await response.json();
+                    currentClassData = data.students;
                     
                     studentSelect.innerHTML = '<option value="">-- Выберите ученика --</option>';
-                    data.students.forEach(student => {
+                    
+                    const uniqueStudents = [...new Set(currentClassData.map(s => s.child_full_name))];
+                    
+                    uniqueStudents.forEach(studentName => {
                         const option = document.createElement('option');
-                        option.value = student.telegram_id;
-                        option.textContent = student.child_full_name;
+                        option.value = studentName;
+                        option.textContent = studentName;
                         studentSelect.appendChild(option);
                     });
                 } catch (error) {
@@ -300,6 +320,30 @@
                 }
             } else {
                 studentSelect.innerHTML = '<option value="">-- Выберите ученика --</option>';
+                currentClassData = [];
+            }
+        }
+
+        function handleStudentChange() {
+            const studentName = document.getElementById('student_select').value;
+            const parentBlock = document.getElementById('parent_block');
+            const parentSelect = document.getElementById('parent_select');
+            
+            if (studentName) {
+                parentBlock.classList.remove('hidden');
+                parentSelect.innerHTML = '<option value="">-- Выберите родителя --</option>';
+                
+                const parents = currentClassData.filter(s => s.child_full_name === studentName);
+                
+                parents.forEach(p => {
+                    const option = document.createElement('option');
+                    option.value = p.telegram_id;
+                    option.textContent = p.parent_full_name;
+                    parentSelect.appendChild(option);
+                });
+            } else {
+                parentBlock.classList.add('hidden');
+                parentSelect.innerHTML = '<option value="">-- Выберите родителя --</option>';
             }
         }
 
@@ -314,9 +358,15 @@
                     return;
                 }
             } else if (targetType === 'student') {
-                targetValue = document.getElementById('student_select').value;
+                const studentValue = document.getElementById('student_select').value;
+                if (!studentValue) {
+                    showStatus('Выберите ученика!', 'text-red-500');
+                    return;
+                }
+                
+                targetValue = document.getElementById('parent_select').value;
                 if (!targetValue) {
-                    showStatus('Выберите ученика для отправки!', 'text-red-500');
+                    showStatus('Выберите родителя для отправки!', 'text-red-500');
                     return;
                 }
             }
