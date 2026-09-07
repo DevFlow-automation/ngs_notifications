@@ -214,6 +214,7 @@
         
         let currentClassData = [];
         let editingParentId = null;
+        let currentDbData = []; // Добавлен массив для хранения данных БД в памяти
 
         function switchTab(tabId) {
             const tabs = ['send', 'history', 'db'];
@@ -327,6 +328,7 @@
                 const response = await fetch('/api/parents');
                 const data = await response.json();
                 
+                currentDbData = data.parents; // Сохраняем данные локально
                 tbody.innerHTML = '';
                 
                 if (data.parents.length === 0) {
@@ -347,7 +349,7 @@
                         </td>
                         <td class="text-xs text-gray-500">${p.address}</td>
                         <td class="text-center space-x-2 whitespace-nowrap">
-                            <button onclick="openEditModal(${p.id}, '${p.parent_full_name.replace(/'/g, "\\'")}', '${p.child_full_name.replace(/'/g, "\\'")}', '${p.school_class}', '${p.email}', '${p.phone}', '${p.address.replace(/'/g, "\\'")}')" class="text-blue-500 hover:text-blue-700 p-1">✏️</button>
+                            <button onclick="openEditModal(${p.id})" class="text-blue-500 hover:text-blue-700 p-1">✏️</button>
                             <button onclick="deleteParent(${p.id})" class="text-red-500 hover:text-red-700 p-1">🗑️</button>
                         </td>
                     `;
@@ -497,15 +499,19 @@
             statusEl.className = `mt-4 font-medium text-center ${colorClass}`;
         }
 
-        // CRUD Функции
-        function openEditModal(id, parentName, childName, schoolClass, email, phone, address) {
+        // Обновленные CRUD Функции
+        function openEditModal(id) {
+            const parent = currentDbData.find(p => p.id === id);
+            if (!parent) return;
+
             editingParentId = id;
-            document.getElementById('edit_parent_name').value = parentName;
-            document.getElementById('edit_child_name').value = childName;
-            document.getElementById('edit_school_class').value = schoolClass;
-            document.getElementById('edit_email').value = email;
-            document.getElementById('edit_phone').value = phone;
-            document.getElementById('edit_address').value = address;
+            document.getElementById('edit_parent_name').value = parent.parent_full_name || '';
+            document.getElementById('edit_child_name').value = parent.child_full_name || '';
+            document.getElementById('edit_school_class').value = parent.school_class || '';
+            document.getElementById('edit_email').value = parent.email || '';
+            document.getElementById('edit_phone').value = parent.phone || '';
+            document.getElementById('edit_address').value = parent.address || '';
+            
             document.getElementById('edit_modal').classList.remove('hidden');
         }
 
