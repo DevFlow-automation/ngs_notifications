@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Панель управления рассылкой</title>
+    <title>Панель управления</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -73,6 +73,7 @@
         <div class="flex">
             <button id="btn_send" onclick="switchTab('send')" class="tab-btn py-2 px-4 border-b-2 font-medium text-blue-600 border-blue-600 focus:outline-none">Рассылка</button>
             <button id="btn_history" onclick="switchTab('history')" class="tab-btn py-2 px-4 border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300 focus:outline-none">История</button>
+            <button id="btn_db" onclick="switchTab('db')" class="tab-btn py-2 px-4 border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300 focus:outline-none">База данных</button>
         </div>
         <a href="/api/export" target="_blank" class="mb-2 bg-green-500 hover:bg-green-600 text-white text-sm py-2 px-4 rounded font-medium shadow-sm transition-colors">📥 Скачать базу (Excel)</a>
     </div>
@@ -147,33 +148,85 @@
         </div>
     </div>
 
+    <div id="tab_db" class="hidden">
+        <div class="table-container bg-white rounded shadow-sm border border-gray-200">
+            <table class="text-black w-full">
+                <thead>
+                    <tr>
+                        <th class="w-12">ID</th>
+                        <th>ФИО Родителя</th>
+                        <th>ФИО Ребенка</th>
+                        <th>Класс</th>
+                        <th>Email / Телефон</th>
+                        <th>Адрес</th>
+                        <th class="text-center">Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="db_tbody">
+                    <tr>
+                        <td colspan="7" class="text-center py-4 text-gray-500">Загрузка базы данных...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Модальное окно для редактирования -->
+    <div id="edit_modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden flex justify-center items-center z-50">
+        <div class="bg-white rounded p-6 w-full max-w-lg mx-4 text-black shadow-lg">
+            <h3 class="text-xl font-bold mb-4">Редактирование записи</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm font-medium mb-1">ФИО Родителя</label>
+                    <input type="text" id="edit_parent_name" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">ФИО Ребенка</label>
+                    <input type="text" id="edit_child_name" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Класс (например, 5А)</label>
+                    <input type="text" id="edit_school_class" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Email</label>
+                    <input type="text" id="edit_email" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Телефон</label>
+                    <input type="text" id="edit_phone" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Адрес</label>
+                    <input type="text" id="edit_address" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end space-x-3">
+                <button onclick="closeEditModal()" class="px-4 py-2 bg-gray-200 text-gray-800 rounded font-medium hover:bg-gray-300 transition-colors">Отмена</button>
+                <button onclick="saveParent()" class="px-4 py-2 bg-blue-600 text-white rounded font-medium hover:bg-blue-700 transition-colors">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
         
         let currentClassData = [];
+        let editingParentId = null;
 
         function switchTab(tabId) {
-            const tabSend = document.getElementById('tab_send');
-            const tabHistory = document.getElementById('tab_history');
-            const btnSend = document.getElementById('btn_send');
-            const btnHistory = document.getElementById('btn_history');
+            const tabs = ['send', 'history', 'db'];
+            tabs.forEach(tab => {
+                document.getElementById(`tab_${tab}`).classList.add('hidden');
+                document.getElementById(`btn_${tab}`).className = "tab-btn py-2 px-4 border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300 focus:outline-none";
+            });
 
-            if (tabId === 'send') {
-                tabSend.classList.remove('hidden');
-                tabHistory.classList.add('hidden');
-                
-                btnSend.className = "tab-btn py-2 px-4 border-b-2 font-medium text-blue-600 border-blue-600 focus:outline-none";
-                btnHistory.className = "tab-btn py-2 px-4 border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300 focus:outline-none";
-            } else {
-                tabSend.classList.add('hidden');
-                tabHistory.classList.remove('hidden');
-                
-                btnHistory.className = "tab-btn py-2 px-4 border-b-2 font-medium text-blue-600 border-blue-600 focus:outline-none";
-                btnSend.className = "tab-btn py-2 px-4 border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300 focus:outline-none";
-                
-                loadHistory(); 
-            }
+            document.getElementById(`tab_${tabId}`).classList.remove('hidden');
+            document.getElementById(`btn_${tabId}`).className = "tab-btn py-2 px-4 border-b-2 font-medium text-blue-600 border-blue-600 focus:outline-none";
+
+            if (tabId === 'history') loadHistory();
+            if (tabId === 'db') loadDb();
         }
 
         function applyTemplate() {
@@ -265,6 +318,43 @@
                 });
             } catch (error) {
                 tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-red-500">Ошибка загрузки истории.</td></tr>';
+            }
+        }
+
+        async function loadDb() {
+            const tbody = document.getElementById('db_tbody');
+            try {
+                const response = await fetch('/api/parents');
+                const data = await response.json();
+                
+                tbody.innerHTML = '';
+                
+                if (data.parents.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-gray-500">База данных пуста.</td></tr>';
+                    return;
+                }
+
+                data.parents.forEach((p) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td class="font-medium text-gray-600">${p.id}</td>
+                        <td class="font-medium">${p.parent_full_name}</td>
+                        <td>${p.child_full_name}</td>
+                        <td><span class="px-2 py-1 bg-gray-100 rounded text-xs font-bold">${p.school_class}</span></td>
+                        <td class="text-xs">
+                            <div class="text-gray-600">${p.email}</div>
+                            <div class="text-gray-800 font-medium">${p.phone}</div>
+                        </td>
+                        <td class="text-xs text-gray-500">${p.address}</td>
+                        <td class="text-center space-x-2 whitespace-nowrap">
+                            <button onclick="openEditModal(${p.id}, '${p.parent_full_name.replace(/'/g, "\\'")}', '${p.child_full_name.replace(/'/g, "\\'")}', '${p.school_class}', '${p.email}', '${p.phone}', '${p.address.replace(/'/g, "\\'")}')" class="text-blue-500 hover:text-blue-700 p-1">✏️</button>
+                            <button onclick="deleteParent(${p.id})" class="text-red-500 hover:text-red-700 p-1">🗑️</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (error) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-red-500">Ошибка загрузки базы данных.</td></tr>';
             }
         }
 
@@ -405,6 +495,71 @@
             const statusEl = document.getElementById('status');
             statusEl.innerText = text;
             statusEl.className = `mt-4 font-medium text-center ${colorClass}`;
+        }
+
+        // CRUD Функции
+        function openEditModal(id, parentName, childName, schoolClass, email, phone, address) {
+            editingParentId = id;
+            document.getElementById('edit_parent_name').value = parentName;
+            document.getElementById('edit_child_name').value = childName;
+            document.getElementById('edit_school_class').value = schoolClass;
+            document.getElementById('edit_email').value = email;
+            document.getElementById('edit_phone').value = phone;
+            document.getElementById('edit_address').value = address;
+            document.getElementById('edit_modal').classList.remove('hidden');
+        }
+
+        function closeEditModal() {
+            editingParentId = null;
+            document.getElementById('edit_modal').classList.add('hidden');
+        }
+
+        async function saveParent() {
+            if (!editingParentId) return;
+
+            const data = {
+                parent_full_name: document.getElementById('edit_parent_name').value,
+                child_full_name: document.getElementById('edit_child_name').value,
+                school_class: document.getElementById('edit_school_class').value,
+                email: document.getElementById('edit_email').value,
+                phone: document.getElementById('edit_phone').value,
+                address: document.getElementById('edit_address').value
+            };
+
+            try {
+                const response = await fetch(`/api/parents/${editingParentId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    closeEditModal();
+                    loadDb(); 
+                } else {
+                    alert('Ошибка при сохранении данных.');
+                }
+            } catch (error) {
+                alert('Ошибка соединения с сервером.');
+            }
+        }
+
+        async function deleteParent(id) {
+            if (!confirm('Вы уверены, что хотите удалить эту запись? Действие нельзя будет отменить.')) return;
+
+            try {
+                const response = await fetch(`/api/parents/${id}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    loadDb();
+                } else {
+                    alert('Ошибка при удалении данных.');
+                }
+            } catch (error) {
+                alert('Ошибка соединения с сервером.');
+            }
         }
 
         loadClasses();
