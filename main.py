@@ -25,7 +25,9 @@ WEBHOOK_PATH = "/webhook"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
-ADMIN_ID = [8771384583,229049117]
+
+SUPER_ADMIN_ID = 8771384583
+ADMIN_IDS = [8771384583, 229049117]
 
 class Registration(StatesGroup):
     waiting_for_parent_name = State()
@@ -41,14 +43,17 @@ class AddChild(StatesGroup):
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
-    if message.from_user.id in ADMIN_ID:
-        kb = ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="Панель рассылки", web_app=WebAppInfo(url=WEBAPP_URL))]
-            ],
-            resize_keyboard=True
-        )
-        await message.answer("Добро пожаловать, администратор! Нажмите кнопку ниже, чтобы открыть панель рассылки.", reply_markup=kb)
+    if message.from_user.id in ADMIN_IDS:
+        if message.from_user.id == SUPER_ADMIN_ID:
+            kb = ReplyKeyboardMarkup(
+                keyboard=[
+                    [KeyboardButton(text="Панель рассылки", web_app=WebAppInfo(url=WEBAPP_URL))]
+                ],
+                resize_keyboard=True
+            )
+            await message.answer("Добро пожаловать, главный администратор! Нажмите кнопку ниже, чтобы открыть панель управления.", reply_markup=kb)
+        else:
+            await message.answer("Добро пожаловать, администратор! Ваш функционал ограничен чатом бота.", reply_markup=types.ReplyKeyboardRemove())
         return
 
     async with async_session() as session:
@@ -233,6 +238,14 @@ class MessageData(BaseModel):
     target_value: str
     text: str
 
+class ParentUpdate(BaseModel):
+    parent_full_name: str
+    child_full_name: str
+    school_class: str
+    email: str
+    phone: str
+    address: str
+
 @app.post(WEBHOOK_PATH)
 async def bot_webhook(request: Request):
     update_data = await request.json()
@@ -298,6 +311,49 @@ async def get_history():
             })
             
     return {"history": data}
+
+@app.get("/api/parents")
+async def get_all_parents():
+    async with async_session() as db_session:
+        result = await db_session.execute(select(Parent).order_by(Parent.school_class, Parent.parent_full_name))
+        parents = result.scalars().all()
+        data = [{
+            "id": p.id,
+            "parent_full_name": p.parent_full_name,
+            "child_full_name": p.child_full_name,
+            "school_class": p.school_class,
+            "email": p.email,
+            "phone": p.phone,
+            "address": p.address
+        } for p in parents]
+        return {"parents": data}
+
+@app.put("/api/parents/{parent_id}")
+async def update_parent(parent_id: int, data: ParentUpdate):
+    async with async_session() as db_session:
+        result = await db_session.execute(select(Parent).where(Parent.id == parent_id))
+        parent = result.scalar_one_or_none()
+        if parent:
+            parent.parent_full_name = data.parent_full_name
+            parent.child_full_name = data.child_full_name
+            parent.school_class = data.school_class
+            parent.email = data.email
+            parent.phone = data.phone
+            parent.address = data.address
+            await db_session.commit()
+            return {"status": "success"}
+        return {"status": "error", "message": "Родитель не найден"}
+
+@app.delete("/api/parents/{parent_id}")
+async def delete_parent(parent_id: int):
+    async with async_session() as db_session:
+        result = await db_session.execute(select(Parent).where(Parent.id == parent_id))
+        parent = result.scalar_one_or_none()
+        if parent:
+            await db_session.delete(parent)
+            await db_session.commit()
+            return {"status": "success"}
+        return {"status": "error", "message": "Родитель не найден"}
 
 @app.post("/api/send")
 async def send_message(data: MessageData):
