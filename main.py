@@ -126,7 +126,7 @@ async def process_phone(message: types.Message, state: FSMContext):
         await message.answer("Неверный формат номера. Введите номер в формате +998 хх - ххх - хх - хх:")
         return
         
-    await state.update_data(phone=message.text)
+    await state.update_data(phone=phone_clean)
     await message.answer("Укажите адрес, где вы сейчас проживаете:")
     await state.set_state(Registration.waiting_for_address)
 
