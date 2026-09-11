@@ -114,7 +114,7 @@ async def process_phone(message: types.Message, state: FSMContext):
     phone_clean = re.sub(r"[\s-]", "", message.text)
     
     if not re.fullmatch(r"^\+998\d{9}$", phone_clean):
-        await message.answer("Неверный формат номера. Введите номер в формате +998 хх - ххх - хх - хх:")
+        await message.answer("Неверный формат номера. Введите номер в формате +998912345678:")
         return
         
     await state.update_data(phone=phone_clean)
