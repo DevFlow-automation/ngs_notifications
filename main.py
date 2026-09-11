@@ -26,7 +26,6 @@ WEBHOOK_PATH = "/webhook"
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-SUPER_ADMIN_ID = 229049117
 ADMIN_IDS = [8771384583, 229049117]
 
 class Registration(StatesGroup):
@@ -44,16 +43,13 @@ class AddChild(StatesGroup):
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     if message.from_user.id in ADMIN_IDS:
-        if message.from_user.id == SUPER_ADMIN_ID:
-            kb = ReplyKeyboardMarkup(
-                keyboard=[
-                    [KeyboardButton(text="Панель рассылки", web_app=WebAppInfo(url=WEBAPP_URL))]
-                ],
-                resize_keyboard=True
-            )
-            await message.answer("Добро пожаловать, главный администратор! Нажмите кнопку ниже, чтобы открыть панель управления.", reply_markup=kb)
-        else:
-            await message.answer("Добро пожаловать, администратор! Ваш функционал ограничен чатом бота.", reply_markup=types.ReplyKeyboardRemove())
+        kb = ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="Панель рассылки", web_app=WebAppInfo(url=WEBAPP_URL))]
+            ],
+            resize_keyboard=True
+        )
+        await message.answer("Добро пожаловать, администратор! Нажмите кнопку ниже, чтобы открыть панель управления.", reply_markup=kb)
         return
 
     async with async_session() as session:
@@ -73,7 +69,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         "Добро пожаловать в официальный бот оповещений New Generation School.\n\n"
         "Бот предназначен для получения важных уведомлений и оперативной связи администрации с родителями. "
         "Для подключения к системе рассылки необходимо пройти регистрацию.\n\n"
-        "*************************************:\n"
+        "*************************************************\n"
         "Пожалуйста, введите ваши ФИО (например, Иванов Иван Иванович), чтобы начать процесс регистрации."
     )
     await message.answer(welcome_text)
