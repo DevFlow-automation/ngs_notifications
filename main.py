@@ -106,7 +106,7 @@ async def process_email(message: types.Message, state: FSMContext):
         return
         
     await state.update_data(email=message.text)
-    await message.answer("Введите ваш номер телефона в формате +998 хх - ххх - хх - хх.\nВажно указать рабочий реальный номер, благодаря этому мы сможем оперативно связываться с вами.")
+    await message.answer("Введите ваш номер телефона в формате +998912345678.\nВажно указать рабочий реальный номер, благодаря этому мы сможем оперативно связываться с вами.")
     await state.set_state(Registration.waiting_for_phone)
 
 @dp.message(Registration.waiting_for_phone, F.text)
