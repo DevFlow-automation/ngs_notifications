@@ -26,7 +26,22 @@ WEBHOOK_PATH = "/webhook"
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-ADMIN_IDS = [8771384583, 229049117]
+# ================= РОЛИ И ДОСТУПЫ =================
+
+ADMIN_IDS = [8771384583, 229049117] # Главные админы (полный доступ)
+
+DEPUTY_IDS = [
+    # Сюда вписывайте ID замдиректоров через запятую
+    # 111111111, 222222222
+]
+
+TEACHERS = {
+    # Сюда вписывайте ID учителей и их классы (ID: "КЛАСС")
+    # 333333333: "5А",
+    # 444444444: "11Б"
+}
+
+# ==================================================
 
 class Registration(StatesGroup):
     waiting_for_parent_name = State()
@@ -42,19 +57,29 @@ class AddChild(StatesGroup):
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
-    if message.from_user.id in ADMIN_IDS:
+    user_id = message.from_user.id
+    
+    # Проверка, является ли пользователь сотрудником
+    if user_id in ADMIN_IDS or user_id in DEPUTY_IDS or user_id in TEACHERS:
         kb = ReplyKeyboardMarkup(
             keyboard=[
                 [KeyboardButton(text="Панель рассылки", web_app=WebAppInfo(url=WEBAPP_URL))]
             ],
             resize_keyboard=True
         )
-        await message.answer("Добро пожаловать, администратор! Нажмите кнопку ниже, чтобы открыть панель управления.", reply_markup=kb)
+        if user_id in ADMIN_IDS:
+            role_name = "администратор"
+        elif user_id in DEPUTY_IDS:
+            role_name = "замдиректора"
+        else:
+            role_name = f"классный руководитель ({TEACHERS[user_id]})"
+            
+        await message.answer(f"Добро пожаловать, {role_name}! Нажмите кнопку ниже, чтобы открыть панель управления.", reply_markup=kb)
         return
 
     async with async_session() as session:
         result = await session.execute(
-            select(Parent).where(Parent.telegram_id == message.from_user.id).limit(1)
+            select(Parent).where(Parent.telegram_id == user_id).limit(1)
         )
         parent = result.scalar_one_or_none()
         
@@ -69,7 +94,6 @@ async def cmd_start(message: types.Message, state: FSMContext):
         "Добро пожаловать в официальный бот оповещений New Generation School.\n\n"
         "Бот предназначен для получения важных уведомлений и оперативной связи администрации с родителями. "
         "Для подключения к системе рассылки необходимо пройти регистрацию.\n\n"
-        "*************************************************\n"
         "Пожалуйста, введите ваши ФИО (например, Иванов Иван Иванович), чтобы начать процесс регистрации."
     )
     await message.answer(welcome_text)
@@ -228,6 +252,7 @@ class MessageData(BaseModel):
     target_type: str
     target_value: str
     text: str
+    user_id: int
 
 class ParentUpdate(BaseModel):
     parent_full_name: str
@@ -244,15 +269,32 @@ async def bot_webhook(request: Request):
     await dp.feed_update(bot=bot, update=telegram_update)
     return {"status": "ok"}
 
+@app.get("/api/me")
+async def get_me(user_id: int = 0):
+    if user_id in ADMIN_IDS:
+        return {"role": "admin", "class": None}
+    elif user_id in DEPUTY_IDS:
+        return {"role": "deputy", "class": None}
+    elif user_id in TEACHERS:
+        return {"role": "teacher", "class": TEACHERS[user_id]}
+    return {"role": "none", "class": None}
+
 @app.get("/api/classes")
-async def get_classes():
-    async with async_session() as db_session:
-        result = await db_session.execute(select(Parent.school_class).distinct())
-        classes = [row[0] for row in result.all()]
-    return {"classes": classes}
+async def get_classes(user_id: int = 0):
+    if user_id in ADMIN_IDS or user_id in DEPUTY_IDS:
+        async with async_session() as db_session:
+            result = await db_session.execute(select(Parent.school_class).distinct())
+            classes = [row[0] for row in result.all()]
+        return {"classes": classes}
+    elif user_id in TEACHERS:
+        return {"classes": [TEACHERS[user_id]]}
+    return {"classes": []}
 
 @app.get("/api/students/{class_name}")
-async def get_students(class_name: str):
+async def get_students(class_name: str, user_id: int = 0):
+    if user_id in TEACHERS and TEACHERS[user_id] != class_name:
+        return {"students": []}
+        
     async with async_session() as db_session:
         result = await db_session.execute(
             select(Parent.telegram_id, Parent.child_full_name, Parent.parent_full_name)
@@ -262,15 +304,29 @@ async def get_students(class_name: str):
     return {"students": students}
 
 @app.get("/api/history")
-async def get_history():
+async def get_history(user_id: int = 0):
+    if user_id not in ADMIN_IDS and user_id not in DEPUTY_IDS and user_id not in TEACHERS:
+        return {"history": []}
+        
     async with async_session() as db_session:
-        result = await db_session.execute(
-            select(MessageHistory).order_by(desc(MessageHistory.timestamp)).limit(50)
-        )
+        query = select(MessageHistory).order_by(desc(MessageHistory.timestamp)).limit(50)
+        result = await db_session.execute(query)
         history = result.scalars().all()
         
         data = []
         for msg in history:
+            # Учитель видит только сообщения, которые отправил он сам, или направленные его классу
+            if user_id in TEACHERS:
+                if msg.sender_id != user_id and msg.recipient_id != TEACHERS[user_id]:
+                    # Проверка, направлено ли родителю из его класса
+                    if msg.recipient_id.isdigit():
+                        p_res = await db_session.execute(select(Parent.school_class).where(Parent.telegram_id == int(msg.recipient_id)).limit(1))
+                        p_class = p_res.scalar_one_or_none()
+                        if p_class != TEACHERS[user_id]:
+                            continue
+                    else:
+                        continue
+                        
             ack_result = await db_session.execute(
                 select(func.count(Acknowledgment.id)).where(Acknowledgment.history_id == msg.id)
             )
@@ -304,7 +360,10 @@ async def get_history():
     return {"history": data}
 
 @app.get("/api/parents")
-async def get_all_parents():
+async def get_all_parents(user_id: int = 0):
+    if user_id not in ADMIN_IDS:
+        return {"parents": []}
+        
     async with async_session() as db_session:
         result = await db_session.execute(select(Parent).order_by(Parent.school_class, Parent.parent_full_name))
         parents = result.scalars().all()
@@ -320,7 +379,10 @@ async def get_all_parents():
         return {"parents": data}
 
 @app.put("/api/parents/{parent_id}")
-async def update_parent(parent_id: int, data: ParentUpdate):
+async def update_parent(parent_id: int, data: ParentUpdate, user_id: int = 0):
+    if user_id not in ADMIN_IDS:
+        return {"status": "error", "message": "Нет прав"}
+        
     async with async_session() as db_session:
         result = await db_session.execute(select(Parent).where(Parent.id == parent_id))
         parent = result.scalar_one_or_none()
@@ -336,7 +398,10 @@ async def update_parent(parent_id: int, data: ParentUpdate):
         return {"status": "error", "message": "Родитель не найден"}
 
 @app.delete("/api/parents/{parent_id}")
-async def delete_parent(parent_id: int):
+async def delete_parent(parent_id: int, user_id: int = 0):
+    if user_id not in ADMIN_IDS:
+        return {"status": "error", "message": "Нет прав"}
+        
     async with async_session() as db_session:
         result = await db_session.execute(select(Parent).where(Parent.id == parent_id))
         parent = result.scalar_one_or_none()
@@ -348,6 +413,23 @@ async def delete_parent(parent_id: int):
 
 @app.post("/api/send")
 async def send_message(data: MessageData):
+    user_id = data.user_id
+    if user_id not in ADMIN_IDS and user_id not in DEPUTY_IDS and user_id not in TEACHERS:
+        return {"status": "error", "message": "Нет прав"}
+
+    if user_id in TEACHERS:
+        allowed_class = TEACHERS[user_id]
+        if data.target_type == 'all':
+            return {"status": "error", "message": "Нет прав для массовой рассылки"}
+        elif data.target_type == 'class' and data.target_value != allowed_class:
+            return {"status": "error", "message": "Можно писать только своему классу"}
+        elif data.target_type == 'student':
+            async with async_session() as db_session:
+                res = await db_session.execute(select(Parent.school_class).where(Parent.telegram_id == int(data.target_value)).limit(1))
+                p_class = res.scalar_one_or_none()
+                if p_class != allowed_class:
+                    return {"status": "error", "message": "Ученик не из вашего класса"}
+
     async with async_session() as db_session:
         if data.target_type == 'all':
             result = await db_session.execute(select(Parent.telegram_id).distinct())
@@ -366,7 +448,7 @@ async def send_message(data: MessageData):
         if not parent_ids:
             return {"status": "error", "message": "Нет получателей"}
             
-        new_msg = MessageHistory(recipient_id=data.target_value, message_text=data.text)
+        new_msg = MessageHistory(sender_id=user_id, recipient_id=data.target_value, message_text=data.text)
         db_session.add(new_msg)
         await db_session.flush()
         
@@ -388,7 +470,10 @@ async def send_message(data: MessageData):
     return {"status": "success", "count": success_count}
 
 @app.get("/api/export")
-async def export_excel():
+async def export_excel(user_id: int = 0):
+    if user_id not in ADMIN_IDS and user_id not in DEPUTY_IDS:
+        return HTMLResponse("<h1>Нет доступа</h1>", status_code=403)
+
     async with async_session() as db_session:
         result_parents = await db_session.execute(select(Parent).order_by(Parent.school_class, Parent.parent_full_name))
         parents = result_parents.scalars().all()
