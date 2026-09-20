@@ -59,14 +59,16 @@ class AddChild(StatesGroup):
 async def cmd_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     
-    # Проверка, является ли пользователь сотрудником
     if user_id in ADMIN_IDS or user_id in DEPUTY_IDS or user_id in TEACHERS:
-        kb = ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="Панель рассылки", web_app=WebAppInfo(url=WEBAPP_URL))]
-            ],
-            resize_keyboard=True
+        # Вшиваем ID пользователя прямо в ссылку веб-аппа
+        app_url = f"{WEBAPP_URL}?user_id={user_id}"
+        
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Панель рассылки", web_app=WebAppInfo(url=app_url))]
+            ]
         )
+        
         if user_id in ADMIN_IDS:
             role_name = "администратор"
         elif user_id in DEPUTY_IDS:
