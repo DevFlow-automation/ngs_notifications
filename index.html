@@ -21,61 +21,31 @@
         }
     </script>
     <style>
-        .table-container {
-            width: 100%;
-            overflow-x: auto;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.875rem;
-        }
-        th, td {
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 1px solid #e2e8f0;
-        }
-        th {
-            background-color: #f8fafc;
-            font-weight: 600;
-            color: #475569;
-            white-space: nowrap;
-        }
-        tbody tr:nth-child(even) {
-            background-color: #f8fafc;
-        }
+        .table-container { width: 100%; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { background-color: #f8fafc; font-weight: 600; color: #475569; white-space: nowrap; }
+        tbody tr:nth-child(even) { background-color: #f8fafc; }
         .text-truncate {
-            max-width: 200px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            display: inline-block;
+            max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block;
         }
         .text-truncate:hover {
-            white-space: normal;
-            overflow: visible;
-            background-color: white;
-            position: relative;
-            z-index: 10;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            padding: 4px;
-            border-radius: 4px;
+            white-space: normal; overflow: visible; background-color: white; position: relative; z-index: 10;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); padding: 4px; border-radius: 4px;
         }
-        .tab-btn {
-            transition: all 0.2s ease-in-out;
-        }
+        .tab-btn { transition: all 0.2s ease-in-out; }
     </style>
 </head>
 <body class="bg-tgBg text-tgText p-5 font-sans">
     <h2 class="text-xl font-bold mb-4">Панель управления</h2>
     
-    <div class="flex justify-between items-center border-b border-gray-300 mb-6">
+    <div class="flex justify-between items-center border-b border-gray-300 mb-6" id="top_nav">
         <div class="flex">
             <button id="btn_send" onclick="switchTab('send')" class="tab-btn py-2 px-4 border-b-2 font-medium text-blue-600 border-blue-600 focus:outline-none">Рассылка</button>
             <button id="btn_history" onclick="switchTab('history')" class="tab-btn py-2 px-4 border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300 focus:outline-none">История</button>
             <button id="btn_db" onclick="switchTab('db')" class="tab-btn py-2 px-4 border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300 focus:outline-none">База данных</button>
         </div>
-        <a href="/api/export" target="_blank" class="mb-2 bg-green-500 hover:bg-green-600 text-white text-sm py-2 px-4 rounded font-medium shadow-sm transition-colors">📥 Скачать базу (Excel)</a>
+        <a id="btn_export" href="#" target="_blank" class="mb-2 bg-green-500 hover:bg-green-600 text-white text-sm py-2 px-4 rounded font-medium shadow-sm transition-colors">📥 Скачать базу (Excel)</a>
     </div>
     
     <div id="tab_send">
@@ -140,9 +110,7 @@
                     </tr>
                 </thead>
                 <tbody id="history_tbody">
-                    <tr>
-                        <td colspan="7" class="text-center py-4 text-gray-500">Загрузка истории...</td>
-                    </tr>
+                    <tr><td colspan="7" class="text-center py-4 text-gray-500">Загрузка истории...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -163,43 +131,22 @@
                     </tr>
                 </thead>
                 <tbody id="db_tbody">
-                    <tr>
-                        <td colspan="7" class="text-center py-4 text-gray-500">Загрузка базы данных...</td>
-                    </tr>
+                    <tr><td colspan="7" class="text-center py-4 text-gray-500">Загрузка базы данных...</td></tr>
                 </tbody>
             </table>
         </div>
     </div>
 
-    <!-- Модальное окно для редактирования -->
     <div id="edit_modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden flex justify-center items-center z-50">
         <div class="bg-white rounded p-6 w-full max-w-lg mx-4 text-black shadow-lg">
             <h3 class="text-xl font-bold mb-4">Редактирование записи</h3>
             <div class="space-y-3">
-                <div>
-                    <label class="block text-sm font-medium mb-1">ФИО Родителя</label>
-                    <input type="text" id="edit_parent_name" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1">ФИО Ребенка</label>
-                    <input type="text" id="edit_child_name" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1">Класс (например, 5А)</label>
-                    <input type="text" id="edit_school_class" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1">Email</label>
-                    <input type="text" id="edit_email" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1">Телефон</label>
-                    <input type="text" id="edit_phone" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1">Адрес</label>
-                    <input type="text" id="edit_address" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
+                <div><label class="block text-sm font-medium mb-1">ФИО Родителя</label><input type="text" id="edit_parent_name" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
+                <div><label class="block text-sm font-medium mb-1">ФИО Ребенка</label><input type="text" id="edit_child_name" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
+                <div><label class="block text-sm font-medium mb-1">Класс (например, 5А)</label><input type="text" id="edit_school_class" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
+                <div><label class="block text-sm font-medium mb-1">Email</label><input type="text" id="edit_email" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
+                <div><label class="block text-sm font-medium mb-1">Телефон</label><input type="text" id="edit_phone" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
+                <div><label class="block text-sm font-medium mb-1">Адрес</label><input type="text" id="edit_address" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
             </div>
             <div class="mt-6 flex justify-end space-x-3">
                 <button onclick="closeEditModal()" class="px-4 py-2 bg-gray-200 text-gray-800 rounded font-medium hover:bg-gray-300 transition-colors">Отмена</button>
@@ -212,9 +159,50 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
         
+        const userId = tg.initDataUnsafe?.user?.id || 0;
+        let userRole = 'none';
+        let userClass = null;
+
         let currentClassData = [];
         let editingParentId = null;
-        let currentDbData = []; // Добавлен массив для хранения данных БД в памяти
+        let currentDbData = []; 
+
+        async function initApp() {
+            try {
+                const response = await fetch(`/api/me?user_id=${userId}`);
+                const data = await response.json();
+                userRole = data.role;
+                userClass = data.class;
+
+                if (userRole === 'none') {
+                    document.body.innerHTML = '<h2 class="p-5 text-red-500 font-bold">Доступ запрещен.</h2>';
+                    return;
+                }
+
+                document.getElementById('btn_export').href = `/api/export?user_id=${userId}`;
+
+                if (userRole === 'teacher') {
+                    document.getElementById('btn_db').style.display = 'none';
+                    document.getElementById('btn_export').style.display = 'none';
+                    
+                    const typeSelect = document.getElementById('target_type');
+                    for (let i = 0; i < typeSelect.options.length; i++) {
+                        if (typeSelect.options[i].value === 'all') {
+                            typeSelect.remove(i);
+                            break;
+                        }
+                    }
+                } else if (userRole === 'deputy') {
+                    document.getElementById('btn_db').style.display = 'none';
+                }
+
+                toggleFields();
+                loadClasses();
+                loadHistory();
+            } catch(e) {
+                console.log(e);
+            }
+        }
 
         function switchTab(tabId) {
             const tabs = ['send', 'history', 'db'];
@@ -232,16 +220,15 @@
 
         function applyTemplate() {
             const template = document.getElementById('template_select').value;
-            if (template) {
-                document.getElementById('message').value = template;
-            }
+            if (template) document.getElementById('message').value = template;
         }
 
         async function loadClasses() {
             try {
-                const response = await fetch('/api/classes');
+                const response = await fetch(`/api/classes?user_id=${userId}`);
                 const data = await response.json();
                 const select = document.getElementById('class_select');
+                select.innerHTML = '<option value="">-- Выберите класс --</option>';
                 
                 data.classes.forEach(cls => {
                     const option = document.createElement('option');
@@ -249,19 +236,16 @@
                     option.textContent = `Класс ${cls}`;
                     select.appendChild(option);
                 });
-            } catch (error) {
-                console.error("Ошибка загрузки классов:", error);
-            }
+            } catch (error) { console.error(error); }
         }
 
         async function loadHistory() {
             const tbody = document.getElementById('history_tbody');
             try {
-                const response = await fetch('/api/history');
+                const response = await fetch(`/api/history?user_id=${userId}`);
                 const data = await response.json();
                 
                 tbody.innerHTML = '';
-                
                 if (data.history.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-gray-500">История рассылок пуста.</td></tr>';
                     return;
@@ -269,7 +253,6 @@
 
                 data.history.forEach((item, index) => {
                     const tr = document.createElement('tr');
-                    
                     let targetInfo = item.target;
                     let typeLabel = "Индивидуальная";
                     let studentName = "-";
@@ -295,9 +278,7 @@
                                 className = studentData[1];
                             }
                         }
-                    } else {
-                         parentName = targetInfo;
-                    }
+                    } else { parentName = targetInfo; }
 
                     tr.innerHTML = `
                         <td class="font-medium text-gray-600">${index + 1}</td>
@@ -306,29 +287,23 @@
                             ${className !== '-' ? `<div class="text-xs text-gray-500">${className}</div>` : ''}
                         </td>
                         <td>${parentName}</td>
-                        <td>
-                            <span class="text-truncate cursor-help" title="${item.text.replace(/"/g, '&quot;')}">
-                                ${item.text}
-                            </span>
-                        </td>
+                        <td><span class="text-truncate cursor-help" title="${item.text.replace(/"/g, '&quot;')}">${item.text}</span></td>
                         <td><span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs font-medium">${typeLabel}</span></td>
                         <td><span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-bold">${item.ack_count}</span></td>
                         <td class="text-gray-500 whitespace-nowrap">${item.time}</td>
                     `;
                     tbody.appendChild(tr);
                 });
-            } catch (error) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-red-500">Ошибка загрузки истории.</td></tr>';
-            }
+            } catch (error) { tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-red-500">Ошибка загрузки истории.</td></tr>'; }
         }
 
         async function loadDb() {
             const tbody = document.getElementById('db_tbody');
             try {
-                const response = await fetch('/api/parents');
+                const response = await fetch(`/api/parents?user_id=${userId}`);
                 const data = await response.json();
                 
-                currentDbData = data.parents; // Сохраняем данные локально
+                currentDbData = data.parents; 
                 tbody.innerHTML = '';
                 
                 if (data.parents.length === 0) {
@@ -343,10 +318,7 @@
                         <td class="font-medium">${p.parent_full_name}</td>
                         <td>${p.child_full_name}</td>
                         <td><span class="px-2 py-1 bg-gray-100 rounded text-xs font-bold">${p.school_class}</span></td>
-                        <td class="text-xs">
-                            <div class="text-gray-600">${p.email}</div>
-                            <div class="text-gray-800 font-medium">${p.phone}</div>
-                        </td>
+                        <td class="text-xs"><div class="text-gray-600">${p.email}</div><div class="text-gray-800 font-medium">${p.phone}</div></td>
                         <td class="text-xs text-gray-500">${p.address}</td>
                         <td class="text-center space-x-2 whitespace-nowrap">
                             <button onclick="openEditModal(${p.id})" class="text-blue-500 hover:text-blue-700 p-1">✏️</button>
@@ -355,9 +327,7 @@
                     `;
                     tbody.appendChild(tr);
                 });
-            } catch (error) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-red-500">Ошибка загрузки базы данных.</td></tr>';
-            }
+            } catch (error) { tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-red-500">Ошибка загрузки базы данных.</td></tr>'; }
         }
 
         function toggleFields() {
@@ -393,23 +363,18 @@
             if (type === 'student' && className) {
                 studentSelect.innerHTML = '<option value="">Загрузка...</option>';
                 try {
-                    const response = await fetch(`/api/students/${className}`);
+                    const response = await fetch(`/api/students/${className}?user_id=${userId}`);
                     const data = await response.json();
                     currentClassData = data.students;
-                    
                     studentSelect.innerHTML = '<option value="">-- Выберите ученика --</option>';
                     
                     const uniqueStudents = [...new Set(currentClassData.map(s => s.child_full_name))];
-                    
                     uniqueStudents.forEach(studentName => {
                         const option = document.createElement('option');
-                        option.value = studentName;
-                        option.textContent = studentName;
+                        option.value = studentName; option.textContent = studentName;
                         studentSelect.appendChild(option);
                     });
-                } catch (error) {
-                    studentSelect.innerHTML = '<option value="">Ошибка загрузки</option>';
-                }
+                } catch (error) { studentSelect.innerHTML = '<option value="">Ошибка загрузки</option>'; }
             } else {
                 studentSelect.innerHTML = '<option value="">-- Выберите ученика --</option>';
                 currentClassData = [];
@@ -424,13 +389,10 @@
             if (studentName) {
                 parentBlock.classList.remove('hidden');
                 parentSelect.innerHTML = '<option value="">-- Выберите родителя --</option>';
-                
                 const parents = currentClassData.filter(s => s.child_full_name === studentName);
-                
                 parents.forEach(p => {
                     const option = document.createElement('option');
-                    option.value = p.telegram_id;
-                    option.textContent = p.parent_full_name;
+                    option.value = p.telegram_id; option.textContent = p.parent_full_name;
                     parentSelect.appendChild(option);
                 });
             } else {
@@ -445,65 +407,42 @@
             
             if (targetType === 'class') {
                 targetValue = document.getElementById('class_select').value;
-                if (!targetValue) {
-                    showStatus('Выберите класс для отправки!', 'text-red-500');
-                    return;
-                }
+                if (!targetValue) { showStatus('Выберите класс для отправки!', 'text-red-500'); return; }
             } else if (targetType === 'student') {
                 const studentValue = document.getElementById('student_select').value;
-                if (!studentValue) {
-                    showStatus('Выберите ученика!', 'text-red-500');
-                    return;
-                }
-                
+                if (!studentValue) { showStatus('Выберите ученика!', 'text-red-500'); return; }
                 targetValue = document.getElementById('parent_select').value;
-                if (!targetValue) {
-                    showStatus('Выберите родителя для отправки!', 'text-red-500');
-                    return;
-                }
+                if (!targetValue) { showStatus('Выберите родителя для отправки!', 'text-red-500'); return; }
             }
 
             const text = document.getElementById('message').value;
-            if (!text.trim()) {
-                showStatus('Введите текст сообщения!', 'text-red-500');
-                return;
-            }
-            
+            if (!text.trim()) { showStatus('Введите текст сообщения!', 'text-red-500'); return; }
             showStatus('Отправка...', 'text-blue-500');
             
             try {
                 const response = await fetch('/api/send', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ target_type: targetType, target_value: targetValue, text: text })
+                    body: JSON.stringify({ target_type: targetType, target_value: targetValue, text: text, user_id: userId })
                 });
-                
                 const result = await response.json();
                 if (result.status === 'success') {
                     showStatus(`Успешно отправлено ${result.count} родителям.`, 'text-green-500');
                     document.getElementById('message').value = '';
                     document.getElementById('template_select').value = '';
-                    
                     setTimeout(() => switchTab('history'), 1500);
-                } else {
-                    showStatus('Ошибка на сервере при отправке.', 'text-red-500');
-                }
-            } catch (error) {
-                showStatus('Ошибка соединения с сервером.', 'text-red-500');
-            }
+                } else { showStatus(result.message || 'Ошибка при отправке.', 'text-red-500'); }
+            } catch (error) { showStatus('Ошибка соединения с сервером.', 'text-red-500'); }
         }
 
         function showStatus(text, colorClass) {
             const statusEl = document.getElementById('status');
-            statusEl.innerText = text;
-            statusEl.className = `mt-4 font-medium text-center ${colorClass}`;
+            statusEl.innerText = text; statusEl.className = `mt-4 font-medium text-center ${colorClass}`;
         }
 
-        // Обновленные CRUD Функции
         function openEditModal(id) {
             const parent = currentDbData.find(p => p.id === id);
             if (!parent) return;
-
             editingParentId = id;
             document.getElementById('edit_parent_name').value = parent.parent_full_name || '';
             document.getElementById('edit_child_name').value = parent.child_full_name || '';
@@ -511,7 +450,6 @@
             document.getElementById('edit_email').value = parent.email || '';
             document.getElementById('edit_phone').value = parent.phone || '';
             document.getElementById('edit_address').value = parent.address || '';
-            
             document.getElementById('edit_modal').classList.remove('hidden');
         }
 
@@ -522,7 +460,6 @@
 
         async function saveParent() {
             if (!editingParentId) return;
-
             const data = {
                 parent_full_name: document.getElementById('edit_parent_name').value,
                 child_full_name: document.getElementById('edit_child_name').value,
@@ -531,45 +468,29 @@
                 phone: document.getElementById('edit_phone').value,
                 address: document.getElementById('edit_address').value
             };
-
             try {
-                const response = await fetch(`/api/parents/${editingParentId}`, {
+                const response = await fetch(`/api/parents/${editingParentId}?user_id=${userId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
                 const result = await response.json();
-                if (result.status === 'success') {
-                    closeEditModal();
-                    loadDb(); 
-                } else {
-                    alert('Ошибка при сохранении данных.');
-                }
-            } catch (error) {
-                alert('Ошибка соединения с сервером.');
-            }
+                if (result.status === 'success') { closeEditModal(); loadDb(); } 
+                else { alert('Ошибка при сохранении данных.'); }
+            } catch (error) { alert('Ошибка соединения с сервером.'); }
         }
 
         async function deleteParent(id) {
-            if (!confirm('Вы уверены, что хотите удалить эту запись? Действие нельзя будет отменить.')) return;
-
+            if (!confirm('Удалить эту запись? Действие необратимо.')) return;
             try {
-                const response = await fetch(`/api/parents/${id}`, {
-                    method: 'DELETE'
-                });
+                const response = await fetch(`/api/parents/${id}?user_id=${userId}`, { method: 'DELETE' });
                 const result = await response.json();
-                if (result.status === 'success') {
-                    loadDb();
-                } else {
-                    alert('Ошибка при удалении данных.');
-                }
-            } catch (error) {
-                alert('Ошибка соединения с сервером.');
-            }
+                if (result.status === 'success') { loadDb(); } 
+                else { alert('Ошибка при удалении данных.'); }
+            } catch (error) { alert('Ошибка соединения с сервером.'); }
         }
 
-        loadClasses();
-        loadHistory();
+        initApp();
     </script>
 </body>
 </html>
