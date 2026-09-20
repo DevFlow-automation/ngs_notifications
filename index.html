@@ -156,10 +156,13 @@
     </div>
 
     <script>
-        const tg = window.Telegram.WebApp;
+      const tg = window.Telegram.WebApp;
         tg.expand();
         
-        const userId = tg.initDataUnsafe?.user?.id || 0;
+        // Достаем ID либо из кэша Telegram, либо напрямую из нашей ссылки
+        const urlParams = new URLSearchParams(window.location.search);
+        const userId = tg.initDataUnsafe?.user?.id || parseInt(urlParams.get('user_id')) || 0;
+        
         let userRole = 'none';
         let userClass = null;
 
