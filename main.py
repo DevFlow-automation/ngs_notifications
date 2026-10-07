@@ -28,50 +28,11 @@ dp = Dispatcher()
 
 # ================= РОЛИ И ДОСТУПЫ =================
 ADMIN_IDS = [8771384583, 229049117] 
-
-+1
--1
-Lines changed: 1 addition & 1 deletion
-Original file line number	Diff line number	Diff line change
-@@ -1,581 +1,581 @@
-import asyncio
-import os
-import re
-import io
-import openpyxl
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
-from pydantic import BaseModel
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import CommandStart, Command
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
-from sqlalchemy import select, desc, func
-from dotenv import load_dotenv
-
-from database import init_db, async_session, Parent, MessageHistory, Acknowledgment
-
-load_dotenv()
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBAPP_URL = os.getenv("WEBAPP_URL")
-WEBHOOK_PATH = "/webhook"
-
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
-
-# ================= РОЛИ И ДОСТУПЫ =================
-
-ADMIN_IDS = [8771384583, 229049117] # Главные админы (полный доступ)
-
 DEPUTY_IDS = [
     # Сюда вписывайте ID замдиректоров через запятую
-    # 111111111, 222222222
-    387863654,21900086,87180537,32542185,1759984801,11763622,1176641277
     387863654,21900086,87180537,32542185,1759984801,11763622,1176641277, 117636223
 ]
+
 
 TEACHERS = {
     # Сюда вписывайте ID учителей и их классы (ID: "КЛАСС")
