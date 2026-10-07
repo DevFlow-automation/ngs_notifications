@@ -29,11 +29,84 @@ dp = Dispatcher()
 # ================= РОЛИ И ДОСТУПЫ =================
 ADMIN_IDS = [8771384583, 229049117] 
 
-DEPUTY_IDS = []
++1
+-1
+Lines changed: 1 addition & 1 deletion
+Original file line number	Diff line number	Diff line change
+@@ -1,581 +1,581 @@
+import asyncio
+import os
+import re
+import io
+import openpyxl
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, StreamingResponse
+from pydantic import BaseModel
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import CommandStart, Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
+from sqlalchemy import select, desc, func
+from dotenv import load_dotenv
+
+from database import init_db, async_session, Parent, MessageHistory, Acknowledgment
+
+load_dotenv()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+WEBAPP_URL = os.getenv("WEBAPP_URL")
+WEBHOOK_PATH = "/webhook"
+
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
+
+# ================= РОЛИ И ДОСТУПЫ =================
+
+ADMIN_IDS = [8771384583, 229049117] # Главные админы (полный доступ)
+
+DEPUTY_IDS = [
+    # Сюда вписывайте ID замдиректоров через запятую
+    # 111111111, 222222222
+    387863654,21900086,87180537,32542185,1759984801,11763622,1176641277
+    387863654,21900086,87180537,32542185,1759984801,11763622,1176641277, 117636223
+]
 
 TEACHERS = {
+    # Сюда вписывайте ID учителей и их классы (ID: "КЛАСС")
     # 333333333: "5А",
+    # 444444444: "11Б"
+    593614259: "1А",
+    7475228092: "1Б",
+    165555820: "1В",
+    6759744115: "1Г",
+    677271764: "2А",
+    2067119625: "2Б",
+    192592122: "2В",
+    261773072: "2Г",
+    843534212: "3А",
+    83655322: "3Б",
+    1579165503: "3В",
+    1849602045: "3Г",
+    389444120: "4А",
+    8300203162: "4Б",
+    132622662: "4В",
+    267481288: "5А",
+    815313499: "5Б",
+    937544028: "5В",
+    127589326: "6А",
+    905178719: "6Б",
+    8885418064: "7А",
+    8099039998: "7Б",
+    144330475: "7В",
+    241743825: "8А",
+    42760022: "8Б",
+    1329417314: "9А",
+    124341010: "10А",
+    539135124: "11А",
 }
+
 # ==================================================
 
 class AddChild(StatesGroup):
