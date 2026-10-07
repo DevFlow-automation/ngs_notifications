@@ -39,13 +39,13 @@
 <body class="bg-tgBg text-tgText p-5 font-sans">
     <h2 class="text-xl font-bold mb-4">Панель управления</h2>
     
-    <div class="flex justify-between items-center border-b border-gray-300 mb-6" id="top_nav">
-        <div class="flex">
+    <div class="flex justify-between items-center border-b border-gray-300 mb-6 flex-wrap" id="top_nav">
+        <div class="flex space-x-2">
             <button id="btn_send" onclick="switchTab('send')" class="tab-btn py-2 px-4 border-b-2 font-medium text-blue-600 border-blue-600 focus:outline-none">Рассылка</button>
             <button id="btn_history" onclick="switchTab('history')" class="tab-btn py-2 px-4 border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300 focus:outline-none">История</button>
             <button id="btn_db" onclick="switchTab('db')" class="tab-btn py-2 px-4 border-b-2 font-medium text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300 focus:outline-none">База данных</button>
         </div>
-        <a id="btn_export" href="#" target="_blank" class="mb-2 bg-green-500 hover:bg-green-600 text-white text-sm py-2 px-4 rounded font-medium shadow-sm transition-colors">📥 Скачать базу (Excel)</a>
+        <a id="btn_export" href="#" target="_blank" class="mb-2 mt-2 md:mt-0 bg-green-500 hover:bg-green-600 text-white text-sm py-2 px-4 rounded font-medium shadow-sm transition-colors">📥 Скачать базу (Excel)</a>
     </div>
     
     <div id="tab_send">
@@ -117,16 +117,19 @@
     </div>
 
     <div id="tab_db" class="hidden">
+        <div class="mb-4">
+            <button onclick="openAddModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow-sm transition-colors">➕ Добавить родителя</button>
+        </div>
         <div class="table-container bg-white rounded shadow-sm border border-gray-200">
             <table class="text-black w-full">
                 <thead>
                     <tr>
                         <th class="w-12">ID</th>
+                        <th>Telegram ID</th>
                         <th>ФИО Родителя</th>
                         <th>ФИО Ребенка</th>
                         <th>Класс</th>
-                        <th>Email / Телефон</th>
-                        <th>Адрес</th>
+                        <th>Контакты</th>
                         <th class="text-center">Действия</th>
                     </tr>
                 </thead>
@@ -137,13 +140,14 @@
         </div>
     </div>
 
-    <div id="edit_modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden flex justify-center items-center z-50">
-        <div class="bg-white rounded p-6 w-full max-w-lg mx-4 text-black shadow-lg">
-            <h3 class="text-xl font-bold mb-4">Редактирование записи</h3>
+    <div id="edit_modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden flex justify-center items-center z-50 overflow-y-auto">
+        <div class="bg-white rounded p-6 w-full max-w-lg mx-4 text-black shadow-lg my-8">
+            <h3 id="modal_title" class="text-xl font-bold mb-4">Редактирование записи</h3>
             <div class="space-y-3">
+                <div id="tg_id_block" class="hidden"><label class="block text-sm font-medium mb-1">Telegram ID</label><input type="text" id="edit_telegram_id" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
                 <div><label class="block text-sm font-medium mb-1">ФИО Родителя</label><input type="text" id="edit_parent_name" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
                 <div><label class="block text-sm font-medium mb-1">ФИО Ребенка</label><input type="text" id="edit_child_name" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
-                <div><label class="block text-sm font-medium mb-1">Класс (например, 5А)</label><input type="text" id="edit_school_class" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
+                <div><label class="block text-sm font-medium mb-1">Класс (например, 5А)</label><input type="text" id="edit_school_class" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none uppercase"></div>
                 <div><label class="block text-sm font-medium mb-1">Email</label><input type="text" id="edit_email" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
                 <div><label class="block text-sm font-medium mb-1">Телефон</label><input type="text" id="edit_phone" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
                 <div><label class="block text-sm font-medium mb-1">Адрес</label><input type="text" id="edit_address" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
@@ -156,18 +160,24 @@
     </div>
 
     <script>
-      const tg = window.Telegram.WebApp;
-        tg.expand();
+        const tg = window.Telegram.WebApp;
+        tg.ready();
         
-        // Достаем ID либо из кэша Telegram, либо напрямую из нашей ссылки
-        const urlParams = new URLSearchParams(window.location.search);
-        const userId = tg.initDataUnsafe?.user?.id || parseInt(urlParams.get('user_id')) || 0;
-        
+        // Разворачиваем на весь экран только на десктопных платформах. На мобильных останется компактным.
+        const desktopPlatforms = ['tdesktop', 'macos', 'web', 'weba'];
+        if (desktopPlatforms.includes(tg.platform)) {
+            if (tg.requestFullscreen) {
+                try { tg.requestFullscreen(); } catch (e) { tg.expand(); }
+            } else { tg.expand(); }
+        }
+
+        const userId = tg.initDataUnsafe?.user?.id || 0;
         let userRole = 'none';
         let userClass = null;
 
         let currentClassData = [];
         let editingParentId = null;
+        let isCreatingNew = false;
         let currentDbData = []; 
 
         async function initApp() {
@@ -202,9 +212,7 @@
                 toggleFields();
                 loadClasses();
                 loadHistory();
-            } catch(e) {
-                console.log(e);
-            }
+            } catch(e) { console.log(e); }
         }
 
         function switchTab(tabId) {
@@ -235,8 +243,7 @@
                 
                 data.classes.forEach(cls => {
                     const option = document.createElement('option');
-                    option.value = cls;
-                    option.textContent = `Класс ${cls}`;
+                    option.value = cls; option.textContent = `Класс ${cls}`;
                     select.appendChild(option);
                 });
             } catch (error) { console.error(error); }
@@ -285,10 +292,7 @@
 
                     tr.innerHTML = `
                         <td class="font-medium text-gray-600">${index + 1}</td>
-                        <td>
-                            <div class="font-medium">${studentName}</div>
-                            ${className !== '-' ? `<div class="text-xs text-gray-500">${className}</div>` : ''}
-                        </td>
+                        <td><div class="font-medium">${studentName}</div>${className !== '-' ? `<div class="text-xs text-gray-500">${className}</div>` : ''}</td>
                         <td>${parentName}</td>
                         <td><span class="text-truncate cursor-help" title="${item.text.replace(/"/g, '&quot;')}">${item.text}</span></td>
                         <td><span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs font-medium">${typeLabel}</span></td>
@@ -318,11 +322,11 @@
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td class="font-medium text-gray-600">${p.id}</td>
+                        <td class="text-xs text-gray-500">${p.telegram_id}</td>
                         <td class="font-medium">${p.parent_full_name}</td>
                         <td>${p.child_full_name}</td>
                         <td><span class="px-2 py-1 bg-gray-100 rounded text-xs font-bold">${p.school_class}</span></td>
                         <td class="text-xs"><div class="text-gray-600">${p.email}</div><div class="text-gray-800 font-medium">${p.phone}</div></td>
-                        <td class="text-xs text-gray-500">${p.address}</td>
                         <td class="text-center space-x-2 whitespace-nowrap">
                             <button onclick="openEditModal(${p.id})" class="text-blue-500 hover:text-blue-700 p-1">✏️</button>
                             <button onclick="deleteParent(${p.id})" class="text-red-500 hover:text-red-700 p-1">🗑️</button>
@@ -340,17 +344,11 @@
             const parentBlock = document.getElementById('parent_block');
             
             if (type === 'all') {
-                classBlock.classList.add('hidden');
-                studentBlock.classList.add('hidden');
-                parentBlock.classList.add('hidden');
+                classBlock.classList.add('hidden'); studentBlock.classList.add('hidden'); parentBlock.classList.add('hidden');
             } else if (type === 'class') {
-                classBlock.classList.remove('hidden');
-                studentBlock.classList.add('hidden');
-                parentBlock.classList.add('hidden');
+                classBlock.classList.remove('hidden'); studentBlock.classList.add('hidden'); parentBlock.classList.add('hidden');
             } else if (type === 'student') {
-                classBlock.classList.remove('hidden');
-                studentBlock.classList.remove('hidden');
-                handleClassChange();
+                classBlock.classList.remove('hidden'); studentBlock.classList.remove('hidden'); handleClassChange();
             }
         }
 
@@ -443,10 +441,30 @@
             statusEl.innerText = text; statusEl.className = `mt-4 font-medium text-center ${colorClass}`;
         }
 
+        function openAddModal() {
+            isCreatingNew = true;
+            editingParentId = null;
+            document.getElementById('modal_title').innerText = "Добавление родителя";
+            document.getElementById('tg_id_block').classList.remove('hidden');
+            
+            document.getElementById('edit_telegram_id').value = '';
+            document.getElementById('edit_parent_name').value = '';
+            document.getElementById('edit_child_name').value = '';
+            document.getElementById('edit_school_class').value = '';
+            document.getElementById('edit_email').value = 'Не указан';
+            document.getElementById('edit_phone').value = '';
+            document.getElementById('edit_address').value = 'Не указан';
+            document.getElementById('edit_modal').classList.remove('hidden');
+        }
+
         function openEditModal(id) {
             const parent = currentDbData.find(p => p.id === id);
             if (!parent) return;
+            isCreatingNew = false;
             editingParentId = id;
+            document.getElementById('modal_title').innerText = "Редактирование записи";
+            document.getElementById('tg_id_block').classList.add('hidden');
+
             document.getElementById('edit_parent_name').value = parent.parent_full_name || '';
             document.getElementById('edit_child_name').value = parent.child_full_name || '';
             document.getElementById('edit_school_class').value = parent.school_class || '';
@@ -457,12 +475,10 @@
         }
 
         function closeEditModal() {
-            editingParentId = null;
             document.getElementById('edit_modal').classList.add('hidden');
         }
 
         async function saveParent() {
-            if (!editingParentId) return;
             const data = {
                 parent_full_name: document.getElementById('edit_parent_name').value,
                 child_full_name: document.getElementById('edit_child_name').value,
@@ -471,15 +487,33 @@
                 phone: document.getElementById('edit_phone').value,
                 address: document.getElementById('edit_address').value
             };
+
             try {
-                const response = await fetch(`/api/parents/${editingParentId}?user_id=${userId}`, {
-                    method: 'PUT',
+                let url, method;
+                if (isCreatingNew) {
+                    data.telegram_id = parseInt(document.getElementById('edit_telegram_id').value);
+                    if (!data.telegram_id) { alert('Введите корректный Telegram ID'); return; }
+                    url = `/api/parents?user_id=${userId}`;
+                    method = 'POST';
+                } else {
+                    if (!editingParentId) return;
+                    url = `/api/parents/${editingParentId}?user_id=${userId}`;
+                    method = 'PUT';
+                }
+
+                const response = await fetch(url, {
+                    method: method,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
                 const result = await response.json();
-                if (result.status === 'success') { closeEditModal(); loadDb(); } 
-                else { alert('Ошибка при сохранении данных.'); }
+                
+                if (result.status === 'success') { 
+                    closeEditModal(); 
+                    loadDb(); 
+                } else { 
+                    alert('Ошибка: ' + (result.message || 'Сбой при сохранении')); 
+                }
             } catch (error) { alert('Ошибка соединения с сервером.'); }
         }
 
