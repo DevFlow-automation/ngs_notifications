@@ -28,46 +28,13 @@ dp = Dispatcher()
 
 # ================= РОЛИ И ДОСТУПЫ =================
 ADMIN_IDS = [8771384583, 229049117] 
-DEPUTY_IDS = [
-    # Сюда вписывайте ID замдиректоров через запятую
-    387863654,21900086,87180537,32542185,1759984801,11763622,1176641277, 117636223,219000864
-]
 
+DEPUTY_IDS = []
 
 TEACHERS = {
-    # Сюда вписывайте ID учителей и их классы (ID: "КЛАСС")
+    # Пример заполнения (используйте русские буквы, как в базе)
     # 333333333: "5А",
-    # 444444444: "11Б"
-    593614259: "1А",
-    7475228092: "1Б",
-    165555820: "1В",
-    6759744115: "1Г",
-    677271764: "2А",
-    2067119625: "2Б",
-    192592122: "2В",
-    261773072: "2Г",
-    843534212: "3А",
-    83655322: "3Б",
-    1579165503: "3В",
-    1849602045: "3Г",
-    389444120: "4А",
-    8300203162: "4Б",
-    132622662: "4В",
-    267481288: "5А",
-    815313499: "5Б",
-    937544028: "5В",
-    127589326: "6А",
-    905178719: "6Б",
-    8885418064: "7А",
-    8099039998: "7Б",
-    144330475: "7В",
-    241743825: "8А",
-    42760022: "8Б",
-    1329417314: "9А",
-    124341010: "10А",
-    539135124: "11А",
 }
-
 # ==================================================
 
 class AddChild(StatesGroup):
@@ -287,9 +254,10 @@ async def get_history(user_id: int = 0):
             if user_id in TEACHERS:
                 if msg.sender_id != user_id and msg.recipient_id != TEACHERS[user_id]:
                     if msg.recipient_id.isdigit():
-                        p_res = await db_session.execute(select(Parent.school_class).where(Parent.telegram_id == int(msg.recipient_id)).limit(1))
-                        p_class = p_res.scalar_one_or_none()
-                        if p_class != TEACHERS[user_id]:
+                        # Исправлено: собираем все классы родителя, чтобы учесть многодетных
+                        p_res = await db_session.execute(select(Parent.school_class).where(Parent.telegram_id == int(msg.recipient_id)))
+                        p_classes = [row[0] for row in p_res.all()]
+                        if TEACHERS[user_id] not in p_classes:
                             continue
                     else:
                         continue
@@ -449,9 +417,10 @@ async def send_message(data: MessageData):
             return {"status": "error", "message": "Можно писать только своему классу"}
         elif data.target_type == 'student':
             async with async_session() as db_session:
-                res = await db_session.execute(select(Parent.school_class).where(Parent.telegram_id == int(data.target_value)).limit(1))
-                p_class = res.scalar_one_or_none()
-                if p_class != allowed_class:
+                # Исправлено: собираем все классы привязанные к этому родителю, а не только первый попавшийся
+                res = await db_session.execute(select(Parent.school_class).where(Parent.telegram_id == int(data.target_value)))
+                parent_classes = [row[0] for row in res.all()]
+                if allowed_class not in parent_classes:
                     return {"status": "error", "message": "Ученик не из вашего класса"}
 
     try:
