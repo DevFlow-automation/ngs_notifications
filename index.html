@@ -101,6 +101,7 @@
                 <thead>
                     <tr>
                         <th class="w-12">№</th>
+                        <th>Отправитель</th>
                         <th>Ученик / Класс</th>
                         <th>Родитель</th>
                         <th>Сообщение</th>
@@ -110,7 +111,7 @@
                     </tr>
                 </thead>
                 <tbody id="history_tbody">
-                    <tr><td colspan="7" class="text-center py-4 text-gray-500">Загрузка истории...</td></tr>
+                    <tr><td colspan="8" class="text-center py-4 text-gray-500">Загрузка истории...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -257,7 +258,7 @@
                 
                 tbody.innerHTML = '';
                 if (data.history.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-gray-500">История рассылок пуста.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">История рассылок пуста.</td></tr>';
                     return;
                 }
 
@@ -292,6 +293,7 @@
 
                     tr.innerHTML = `
                         <td class="font-medium text-gray-600">${index + 1}</td>
+                        <td class="text-sm font-medium text-blue-600 whitespace-nowrap">${item.sender}</td>
                         <td><div class="font-medium">${studentName}</div>${className !== '-' ? `<div class="text-xs text-gray-500">${className}</div>` : ''}</td>
                         <td>${parentName}</td>
                         <td><span class="text-truncate cursor-help" title="${item.text.replace(/"/g, '&quot;')}">${item.text}</span></td>
@@ -301,7 +303,7 @@
                     `;
                     tbody.appendChild(tr);
                 });
-            } catch (error) { tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-red-500">Ошибка загрузки истории.</td></tr>'; }
+            } catch (error) { tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-red-500">Ошибка загрузки истории.</td></tr>'; }
         }
 
         async function loadDb() {
@@ -310,8 +312,6 @@
                 const response = await fetch(`/api/parents?user_id=${userId}`);
                 const data = await response.json();
                 currentDbData = data.parents;
-                
-                // При загрузке применяем фильтр, если текст уже введен в поиск
                 filterDb();
             } catch (error) { 
                 tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-red-500">Ошибка загрузки базы данных.</td></tr>'; 
