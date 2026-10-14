@@ -31,7 +31,8 @@ class Parent(Base):
     email: Mapped[str] = mapped_column(String(100))
     phone: Mapped[str] = mapped_column(String(20))
     address: Mapped[str] = mapped_column(String(255))
-    is_sick: Mapped[bool] = mapped_column(Boolean, default=False) # Новое поле
+    is_sick: Mapped[bool] = mapped_column(Boolean, default=False)
+    student_status: Mapped[str] = mapped_column(String(50), default='present')
 
 class MessageHistory(Base):
     __tablename__ = 'messages'
@@ -55,7 +56,7 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
         try:
             await conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_id BIGINT;"))
-            # Безопасное добавление колонки "болеет" для уже существующей таблицы
             await conn.execute(text("ALTER TABLE parents ADD COLUMN IF NOT EXISTS is_sick BOOLEAN DEFAULT FALSE;"))
+            await conn.execute(text("ALTER TABLE parents ADD COLUMN IF NOT EXISTS student_status VARCHAR(50) DEFAULT 'present';"))
         except Exception:
             pass
