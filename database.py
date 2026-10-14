@@ -1,7 +1,7 @@
 import os
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, BigInteger, Text, DateTime, func, Integer, text
+from sqlalchemy import String, BigInteger, Text, DateTime, func, Integer, text, Boolean
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -31,12 +31,13 @@ class Parent(Base):
     email: Mapped[str] = mapped_column(String(100))
     phone: Mapped[str] = mapped_column(String(20))
     address: Mapped[str] = mapped_column(String(255))
+    is_sick: Mapped[bool] = mapped_column(Boolean, default=False) # Новое поле
 
 class MessageHistory(Base):
     __tablename__ = 'messages'
     
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    sender_id: Mapped[int] = mapped_column(BigInteger, nullable=True) # ID того, кто отправил
+    sender_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
     recipient_id: Mapped[str] = mapped_column(String(50))
     message_text: Mapped[str] = mapped_column(Text)
     timestamp: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
@@ -52,8 +53,9 @@ class Acknowledgment(Base):
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Безопасное добавление новой колонки для уже существующих баз данных
         try:
             await conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_id BIGINT;"))
+            # Безопасное добавление колонки "болеет" для уже существующей таблицы
+            await conn.execute(text("ALTER TABLE parents ADD COLUMN IF NOT EXISTS is_sick BOOLEAN DEFAULT FALSE;"))
         except Exception:
             pass
