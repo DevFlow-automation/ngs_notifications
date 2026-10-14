@@ -55,6 +55,7 @@
                 <option value="all">Всем родителям</option>
                 <option value="class">Определенному классу</option>
                 <option value="student">Конкретному ученику (родителю)</option>
+                <option value="sick" id="option_sick">Болеющим ученикам</option>
             </select>
             
             <div id="class_block" class="hidden mb-4">
@@ -119,7 +120,7 @@
 
     <div id="tab_db" class="hidden">
         <div class="mb-4 flex flex-col md:flex-row justify-between gap-3 sticky top-0 z-10 bg-tgBg py-2">
-            <button onclick="openAddModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow-sm transition-colors w-full md:w-auto">➕ Добавить родителя</button>
+            <button id="btn_add_parent" onclick="openAddModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow-sm transition-colors w-full md:w-auto">➕ Добавить родителя</button>
             <input type="text" id="searchInput" oninput="filterDb()" placeholder="Поиск (ФИО, класс, телефон)..." class="w-full md:max-w-xs p-2 border rounded border-gray-300 text-black focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
         <div class="table-container bg-white rounded shadow-sm border border-gray-200">
@@ -127,16 +128,17 @@
                 <thead>
                     <tr>
                         <th class="w-12">ID</th>
-                        <th>Telegram ID</th>
+                        <th id="th_tg_id">Telegram ID</th>
                         <th>ФИО Родителя</th>
                         <th>ФИО Ребенка</th>
                         <th>Класс</th>
-                        <th>Контакты</th>
-                        <th class="text-center">Действия</th>
+                        <th>Здоровье</th>
+                        <th id="th_contacts">Контакты</th>
+                        <th id="th_actions" class="text-center">Действия</th>
                     </tr>
                 </thead>
                 <tbody id="db_tbody">
-                    <tr><td colspan="7" class="text-center py-4 text-gray-500">Загрузка базы данных...</td></tr>
+                    <tr><td colspan="8" class="text-center py-4 text-gray-500">Загрузка базы данных...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -196,18 +198,23 @@
                 document.getElementById('btn_export').href = `/api/export?user_id=${userId}`;
 
                 if (userRole === 'teacher') {
-                    document.getElementById('btn_db').style.display = 'none';
                     document.getElementById('btn_export').style.display = 'none';
+                    // Для учителя переименовываем вкладку БД в "Мой класс"
+                    document.getElementById('btn_db').innerText = 'Мой класс';
+                    document.getElementById('btn_add_parent').style.display = 'none';
                     
+                    // Убираем возможность массовой рассылки и рассылки по всем болеющим из селекта
                     const typeSelect = document.getElementById('target_type');
-                    for (let i = 0; i < typeSelect.options.length; i++) {
-                        if (typeSelect.options[i].value === 'all') {
+                    for (let i = typeSelect.options.length - 1; i >= 0; i--) {
+                        if (typeSelect.options[i].value === 'all' || typeSelect.options[i].value === 'sick') {
                             typeSelect.remove(i);
-                            break;
                         }
                     }
-                } else if (userRole === 'deputy') {
-                    document.getElementById('btn_db').style.display = 'none';
+                    
+                    // Скрываем столбцы контактов, действий и TG ID для учителей
+                    document.getElementById('th_tg_id').style.display = 'none';
+                    document.getElementById('th_contacts').style.display = 'none';
+                    document.getElementById('th_actions').style.display = 'none';
                 }
 
                 toggleFields();
@@ -274,6 +281,10 @@
                         typeLabel = "Массовая (Всем)";
                         studentName = "Все ученики";
                         parentName = "Все родители";
+                    } else if (targetInfo === "Всем болеющим") {
+                        typeLabel = "Болеющим";
+                        studentName = "Болеющие ученики";
+                        parentName = "Их родители";
                     } else if (targetInfo.startsWith("Класс")) {
                         typeLabel = "По классу";
                         className = targetInfo.replace("Класс ", "");
@@ -314,7 +325,7 @@
                 currentDbData = data.parents;
                 filterDb();
             } catch (error) { 
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-red-500">Ошибка загрузки базы данных.</td></tr>'; 
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-red-500">Ошибка загрузки базы данных.</td></tr>'; 
             }
         }
 
@@ -343,26 +354,62 @@
             tbody.innerHTML = '';
             
             if (dataArray.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-gray-500">Записи не найдены.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">Записи не найдены.</td></tr>';
                 return;
             }
 
             dataArray.forEach((p) => {
                 const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td class="font-medium text-gray-600">${p.id}</td>
-                    <td class="text-xs text-gray-500">${p.telegram_id}</td>
-                    <td class="font-medium">${p.parent_full_name}</td>
-                    <td>${p.child_full_name}</td>
-                    <td><span class="px-2 py-1 bg-gray-100 rounded text-xs font-bold">${p.school_class}</span></td>
-                    <td class="text-xs"><div class="text-gray-600">${p.email}</div><div class="text-gray-800 font-medium">${p.phone}</div></td>
+                
+                let btnSickClass = p.is_sick ? "bg-red-100 text-red-700 border border-red-300" : "bg-green-100 text-green-700 border border-green-300";
+                let btnSickText = p.is_sick ? "Болеет 🤒" : "Здоров ✅";
+                
+                let tgIdCell = userRole === 'teacher' ? '' : `<td class="text-xs text-gray-500">${p.telegram_id}</td>`;
+                let contactsCell = userRole === 'teacher' ? '' : `<td class="text-xs"><div class="text-gray-600">${p.email}</div><div class="text-gray-800 font-medium">${p.phone}</div></td>`;
+                let actionsCell = userRole === 'teacher' ? '' : `
                     <td class="text-center space-x-2 whitespace-nowrap">
                         <button onclick="openEditModal(${p.id})" class="text-blue-500 hover:text-blue-700 p-1">✏️</button>
                         <button onclick="deleteParent(${p.id})" class="text-red-500 hover:text-red-700 p-1">🗑️</button>
                     </td>
                 `;
+
+                tr.innerHTML = `
+                    <td class="font-medium text-gray-600">${p.id}</td>
+                    ${tgIdCell}
+                    <td class="font-medium">${p.parent_full_name}</td>
+                    <td>${p.child_full_name}</td>
+                    <td><span class="px-2 py-1 bg-gray-100 rounded text-xs font-bold">${p.school_class}</span></td>
+                    <td>
+                        <button onclick="toggleSick(${p.id})" class="px-3 py-1 rounded-full text-xs font-bold shadow-sm transition-colors ${btnSickClass}">
+                            ${btnSickText}
+                        </button>
+                    </td>
+                    ${contactsCell}
+                    ${actionsCell}
+                `;
                 tbody.appendChild(tr);
             });
+        }
+
+        async function toggleSick(parentId) {
+            try {
+                const response = await fetch(`/api/parents/${parentId}/sick?user_id=${userId}`, {
+                    method: 'PUT'
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    // Обновляем локально без полной перезагрузки
+                    const index = currentDbData.findIndex(p => p.id === parentId);
+                    if (index !== -1) {
+                        currentDbData[index].is_sick = result.is_sick;
+                        filterDb();
+                    }
+                } else {
+                    alert('Ошибка: ' + (result.message || 'Не удалось изменить статус'));
+                }
+            } catch (error) {
+                alert('Ошибка соединения с сервером.');
+            }
         }
 
         function toggleFields() {
@@ -371,7 +418,7 @@
             const studentBlock = document.getElementById('student_block');
             const parentBlock = document.getElementById('parent_block');
             
-            if (type === 'all') {
+            if (type === 'all' || type === 'sick') {
                 classBlock.classList.add('hidden'); studentBlock.classList.add('hidden'); parentBlock.classList.add('hidden');
             } else if (type === 'class') {
                 classBlock.classList.remove('hidden'); studentBlock.classList.add('hidden'); parentBlock.classList.add('hidden');
@@ -434,7 +481,9 @@
             const targetType = document.getElementById('target_type').value;
             let targetValue = 'all';
             
-            if (targetType === 'class') {
+            if (targetType === 'sick') {
+                targetValue = 'sick';
+            } else if (targetType === 'class') {
                 targetValue = document.getElementById('class_select').value;
                 if (!targetValue) { showStatus('Выберите класс для отправки!', 'text-red-500'); return; }
             } else if (targetType === 'student') {
