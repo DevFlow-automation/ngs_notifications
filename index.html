@@ -55,7 +55,10 @@
                 <option value="all">Всем родителям</option>
                 <option value="class">Определенному классу</option>
                 <option value="student">Конкретному ученику (родителю)</option>
-                <option value="sick" id="option_sick">Болеющим ученикам</option>
+                <option value="sick" class="status-option">Болеющим ученикам</option>
+                <option value="excused" class="status-option">Отсутствующим (уваж. причина)</option>
+                <option value="unexcused" class="status-option">Отсутствующим (неуваж. причина)</option>
+                <option value="late" class="status-option">Опоздавшим</option>
             </select>
             
             <div id="class_block" class="hidden mb-4">
@@ -123,7 +126,7 @@
             <button id="btn_add_parent" onclick="openAddModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow-sm transition-colors w-full md:w-auto">➕ Добавить родителя</button>
             <input type="text" id="searchInput" oninput="filterDb()" placeholder="Поиск (ФИО, класс, телефон)..." class="w-full md:max-w-xs p-2 border rounded border-gray-300 text-black focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
-        <div class="table-container bg-white rounded shadow-sm border border-gray-200">
+        <div class="table-container bg-white rounded shadow-sm border border-gray-200 overflow-visible">
             <table class="text-black w-full">
                 <thead>
                     <tr>
@@ -132,7 +135,7 @@
                         <th>ФИО Родителя</th>
                         <th>ФИО Ребенка</th>
                         <th>Класс</th>
-                        <th>Здоровье</th>
+                        <th class="w-48">Статус ученика</th>
                         <th id="th_contacts">Контакты</th>
                         <th id="th_actions" class="text-center">Действия</th>
                     </tr>
@@ -183,6 +186,22 @@
         let isCreatingNew = false;
         let currentDbData = []; 
 
+        const statusClasses = {
+            'present': 'bg-green-50 text-green-700 border-green-300',
+            'sick': 'bg-red-50 text-red-700 border-red-300',
+            'excused': 'bg-blue-50 text-blue-700 border-blue-300',
+            'unexcused': 'bg-gray-100 text-gray-800 border-gray-400',
+            'late': 'bg-orange-50 text-orange-700 border-orange-300'
+        };
+
+        const statusNames = {
+            'present': 'Присутствует',
+            'sick': 'Болеет',
+            'excused': 'Уважительная',
+            'unexcused': 'Неуважительная',
+            'late': 'Опоздал'
+        };
+
         async function initApp() {
             try {
                 const response = await fetch(`/api/me?user_id=${userId}`);
@@ -199,19 +218,16 @@
 
                 if (userRole === 'teacher') {
                     document.getElementById('btn_export').style.display = 'none';
-                    // Для учителя переименовываем вкладку БД в "Мой класс"
                     document.getElementById('btn_db').innerText = 'Мой класс';
                     document.getElementById('btn_add_parent').style.display = 'none';
                     
-                    // Убираем возможность массовой рассылки и рассылки по всем болеющим из селекта
                     const typeSelect = document.getElementById('target_type');
                     for (let i = typeSelect.options.length - 1; i >= 0; i--) {
-                        if (typeSelect.options[i].value === 'all' || typeSelect.options[i].value === 'sick') {
+                        if (['all', 'sick', 'excused', 'unexcused', 'late'].includes(typeSelect.options[i].value)) {
                             typeSelect.remove(i);
                         }
                     }
                     
-                    // Скрываем столбцы контактов, действий и TG ID для учителей
                     document.getElementById('th_tg_id').style.display = 'none';
                     document.getElementById('th_contacts').style.display = 'none';
                     document.getElementById('th_actions').style.display = 'none';
@@ -281,9 +297,9 @@
                         typeLabel = "Массовая (Всем)";
                         studentName = "Все ученики";
                         parentName = "Все родители";
-                    } else if (targetInfo === "Всем болеющим") {
-                        typeLabel = "Болеющим";
-                        studentName = "Болеющие ученики";
+                    } else if (["Всем болеющим", "Отсутствующим (уваж.)", "Отсутствующим (неуваж.)", "Опоздавшим"].includes(targetInfo)) {
+                        typeLabel = "По статусу";
+                        studentName = "Ученики: " + targetInfo;
                         parentName = "Их родители";
                     } else if (targetInfo.startsWith("Класс")) {
                         typeLabel = "По классу";
@@ -338,12 +354,14 @@
                 const sClass = (p.school_class || '').toLowerCase();
                 const phone = (p.phone || '').toLowerCase();
                 const tgId = String(p.telegram_id || '');
+                const statusName = statusNames[p.student_status || 'present'].toLowerCase();
 
                 return parentName.includes(query) || 
                        childName.includes(query) || 
                        sClass.includes(query) || 
                        phone.includes(query) || 
-                       tgId.includes(query);
+                       tgId.includes(query) ||
+                       statusName.includes(query);
             });
             
             renderDbTable(filteredData);
@@ -360,9 +378,9 @@
 
             dataArray.forEach((p) => {
                 const tr = document.createElement('tr');
+                const st = p.student_status || 'present';
                 
-                let btnSickClass = p.is_sick ? "bg-red-100 text-red-700 border border-red-300" : "bg-green-100 text-green-700 border border-green-300";
-                let btnSickText = p.is_sick ? "Болеет 🤒" : "Здоров ✅";
+                let selectClass = `w-full p-1 text-xs border rounded outline-none font-medium transition-colors ${statusClasses[st]}`;
                 
                 let tgIdCell = userRole === 'teacher' ? '' : `<td class="text-xs text-gray-500">${p.telegram_id}</td>`;
                 let contactsCell = userRole === 'teacher' ? '' : `<td class="text-xs"><div class="text-gray-600">${p.email}</div><div class="text-gray-800 font-medium">${p.phone}</div></td>`;
@@ -380,9 +398,13 @@
                     <td>${p.child_full_name}</td>
                     <td><span class="px-2 py-1 bg-gray-100 rounded text-xs font-bold">${p.school_class}</span></td>
                     <td>
-                        <button onclick="toggleSick(${p.id})" class="px-3 py-1 rounded-full text-xs font-bold shadow-sm transition-colors ${btnSickClass}">
-                            ${btnSickText}
-                        </button>
+                        <select onchange="changeStatus(${p.id}, this)" class="${selectClass}">
+                            <option value="present" ${st === 'present' ? 'selected' : ''}>Присутствует ✅</option>
+                            <option value="sick" ${st === 'sick' ? 'selected' : ''}>Болеет 🤒</option>
+                            <option value="excused" ${st === 'excused' ? 'selected' : ''}>Уважительная 📝</option>
+                            <option value="unexcused" ${st === 'unexcused' ? 'selected' : ''}>Неуважительная ❌</option>
+                            <option value="late" ${st === 'late' ? 'selected' : ''}>Опоздал ⏰</option>
+                        </select>
                     </td>
                     ${contactsCell}
                     ${actionsCell}
@@ -391,24 +413,31 @@
             });
         }
 
-        async function toggleSick(parentId) {
+        async function changeStatus(parentId, selectElement) {
+            const newStatus = selectElement.value;
+            const originalStatus = currentDbData.find(p => p.id === parentId)?.student_status || 'present';
+            
             try {
-                const response = await fetch(`/api/parents/${parentId}/sick?user_id=${userId}`, {
-                    method: 'PUT'
+                const response = await fetch(`/api/parents/${parentId}/status?user_id=${userId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
                 });
                 const result = await response.json();
+                
                 if (result.status === 'success') {
-                    // Обновляем локально без полной перезагрузки
                     const index = currentDbData.findIndex(p => p.id === parentId);
                     if (index !== -1) {
-                        currentDbData[index].is_sick = result.is_sick;
-                        filterDb();
+                        currentDbData[index].student_status = result.student_status;
                     }
+                    selectElement.className = `w-full p-1 text-xs border rounded outline-none font-medium transition-colors ${statusClasses[result.student_status]}`;
                 } else {
                     alert('Ошибка: ' + (result.message || 'Не удалось изменить статус'));
+                    selectElement.value = originalStatus;
                 }
             } catch (error) {
                 alert('Ошибка соединения с сервером.');
+                selectElement.value = originalStatus;
             }
         }
 
@@ -418,7 +447,7 @@
             const studentBlock = document.getElementById('student_block');
             const parentBlock = document.getElementById('parent_block');
             
-            if (type === 'all' || type === 'sick') {
+            if (['all', 'sick', 'excused', 'unexcused', 'late'].includes(type)) {
                 classBlock.classList.add('hidden'); studentBlock.classList.add('hidden'); parentBlock.classList.add('hidden');
             } else if (type === 'class') {
                 classBlock.classList.remove('hidden'); studentBlock.classList.add('hidden'); parentBlock.classList.add('hidden');
@@ -481,8 +510,8 @@
             const targetType = document.getElementById('target_type').value;
             let targetValue = 'all';
             
-            if (targetType === 'sick') {
-                targetValue = 'sick';
+            if (['sick', 'excused', 'unexcused', 'late'].includes(targetType)) {
+                targetValue = targetType;
             } else if (targetType === 'class') {
                 targetValue = document.getElementById('class_select').value;
                 if (!targetValue) { showStatus('Выберите класс для отправки!', 'text-red-500'); return; }
