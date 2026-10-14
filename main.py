@@ -12,7 +12,7 @@ from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
-from sqlalchemy import select, desc, func, update
+from sqlalchemy import select, desc, func
 from dotenv import load_dotenv
 
 from database import init_db, async_session, Parent, MessageHistory, Acknowledgment
@@ -26,16 +26,17 @@ WEBHOOK_PATH = "/webhook"
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# ================= РОЛИ И ДОСТУПЫ =================
 ADMIN_IDS = [8771384583, 229049117] 
-
 DEPUTY_IDS = []
+TEACHERS = {}
 
-TEACHERS = {
-    # Пример заполнения (используйте русские буквы, как в базе)
-    # 333333333: "5А",
+STATUS_TRANSLATIONS = {
+    "present": "Присутствует",
+    "sick": "Болеет",
+    "excused": "Уважительная причина",
+    "unexcused": "Неуважительная причина",
+    "late": "Опоздал"
 }
-# ==================================================
 
 class AddChild(StatesGroup):
     waiting_for_child_name = State()
@@ -62,9 +63,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         await message.answer(f"Добро пожаловать, {role_name}! Нажмите кнопку ниже, чтобы открыть панель управления.", reply_markup=kb_staff)
 
     async with async_session() as session:
-        result = await session.execute(
-            select(Parent).where(Parent.telegram_id == user_id).limit(1)
-        )
+        result = await session.execute(select(Parent).where(Parent.telegram_id == user_id).limit(1))
         parent = result.scalar_one_or_none()
         
     if not parent:
@@ -88,9 +87,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 @dp.message(Command("add_child"))
 async def cmd_add_child(message: types.Message, state: FSMContext):
     async with async_session() as session:
-        result = await session.execute(
-            select(Parent).where(Parent.telegram_id == message.from_user.id).limit(1)
-        )
+        result = await session.execute(select(Parent).where(Parent.telegram_id == message.from_user.id).limit(1))
         parent = result.scalar_one_or_none()
         
         if not parent:
@@ -133,7 +130,7 @@ async def process_additional_school_class(message: types.Message, state: FSMCont
                 email=data['email'],
                 phone=data['phone'],
                 address=data['address'],
-                is_sick=False
+                student_status='present'
             )
             session.add(new_parent)
             await session.commit()
@@ -199,6 +196,9 @@ class RegistrationData(BaseModel):
     email: str
     address: str
 
+class StatusUpdate(BaseModel):
+    status: str
+
 @app.post(WEBHOOK_PATH)
 async def bot_webhook(request: Request):
     update_data = await request.json()
@@ -251,9 +251,11 @@ async def get_history(user_id: int = 0):
         history = result.scalars().all()
         
         data = []
+        status_targets = ["sick", "excused", "unexcused", "late"]
+        
         for msg in history:
             if user_id in TEACHERS:
-                if msg.sender_id != user_id and msg.recipient_id != TEACHERS[user_id] and msg.recipient_id != 'sick':
+                if msg.sender_id != user_id and msg.recipient_id != TEACHERS[user_id] and msg.recipient_id not in status_targets:
                     if msg.recipient_id.isdigit():
                         p_res = await db_session.execute(select(Parent.school_class).where(Parent.telegram_id == int(msg.recipient_id)))
                         p_classes = [row[0] for row in p_res.all()]
@@ -273,9 +275,7 @@ async def get_history(user_id: int = 0):
                 else:
                     sender_display = "Система"
                         
-            ack_result = await db_session.execute(
-                select(func.count(Acknowledgment.id)).where(Acknowledgment.history_id == msg.id)
-            )
+            ack_result = await db_session.execute(select(func.count(Acknowledgment.id)).where(Acknowledgment.history_id == msg.id))
             ack_count = ack_result.scalar() or 0
             
             time_str = msg.timestamp.strftime("%d.%m.%Y %H:%M") if msg.timestamp else ""
@@ -285,10 +285,14 @@ async def get_history(user_id: int = 0):
                 target_display = "Всем родителям"
             elif target_display == 'sick':
                 target_display = "Всем болеющим"
+            elif target_display == 'excused':
+                target_display = "Отсутствующим (уваж.)"
+            elif target_display == 'unexcused':
+                target_display = "Отсутствующим (неуваж.)"
+            elif target_display == 'late':
+                target_display = "Опоздавшим"
             elif target_display.isdigit():
-                parent_result = await db_session.execute(
-                    select(Parent).where(Parent.telegram_id == int(msg.recipient_id)).limit(1)
-                )
+                parent_result = await db_session.execute(select(Parent).where(Parent.telegram_id == int(msg.recipient_id)).limit(1))
                 parent = parent_result.scalar_one_or_none()
                 if parent:
                     target_display = f"{parent.parent_full_name} (реб. {parent.child_full_name}, {parent.school_class})"
@@ -314,7 +318,6 @@ async def get_all_parents(user_id: int = 0):
         return {"parents": []}
         
     async with async_session() as db_session:
-        # Учителя видят только свой класс, админы видят всех
         if user_id in TEACHERS:
             result = await db_session.execute(select(Parent).where(Parent.school_class == TEACHERS[user_id]).order_by(Parent.parent_full_name))
         else:
@@ -330,12 +333,12 @@ async def get_all_parents(user_id: int = 0):
             "email": p.email,
             "phone": p.phone,
             "address": p.address,
-            "is_sick": p.is_sick
+            "student_status": p.student_status
         } for p in parents]
         return {"parents": data}
 
-@app.put("/api/parents/{parent_id}/sick")
-async def toggle_sick(parent_id: int, user_id: int = 0):
+@app.put("/api/parents/{parent_id}/status")
+async def update_student_status(parent_id: int, data: StatusUpdate, user_id: int = 0):
     if user_id not in ADMIN_IDS and user_id not in TEACHERS and user_id not in DEPUTY_IDS:
         return {"status": "error", "message": "Нет прав"}
         
@@ -346,13 +349,12 @@ async def toggle_sick(parent_id: int, user_id: int = 0):
             if not parent:
                 return {"status": "error", "message": "Родитель не найден"}
                 
-            # Учитель может менять статус только ученикам своего класса
             if user_id in TEACHERS and parent.school_class != TEACHERS[user_id]:
                 return {"status": "error", "message": "Это ученик не из вашего класса"}
                 
-            parent.is_sick = not parent.is_sick
+            parent.student_status = data.status
             await db_session.commit()
-            return {"status": "success", "is_sick": parent.is_sick}
+            return {"status": "success", "student_status": parent.student_status}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -371,7 +373,7 @@ async def create_parent_manual(data: ParentCreate, user_id: int = 0):
                 email=data.email,
                 phone=data.phone,
                 address=data.address,
-                is_sick=False
+                student_status='present'
             )
             db_session.add(new_parent)
             await db_session.commit()
@@ -434,7 +436,7 @@ async def api_register_parent(data: RegistrationData):
                 email=data.email,
                 phone=data.phone,
                 address=data.address,
-                is_sick=False
+                student_status='present'
             )
             db_session.add(new_parent)
             await db_session.commit()
@@ -453,9 +455,11 @@ async def send_message(data: MessageData):
     if user_id not in ADMIN_IDS and user_id not in DEPUTY_IDS and user_id not in TEACHERS:
         return {"status": "error", "message": "Нет прав"}
 
+    status_targets = ['sick', 'excused', 'unexcused', 'late']
+
     if user_id in TEACHERS:
         allowed_class = TEACHERS[user_id]
-        if data.target_type == 'all' or data.target_type == 'sick':
+        if data.target_type == 'all' or data.target_type in status_targets:
             return {"status": "error", "message": "У вас нет прав для такой массовой рассылки"}
         elif data.target_type == 'class' and data.target_value != allowed_class:
             return {"status": "error", "message": "Можно писать только своему классу"}
@@ -470,23 +474,18 @@ async def send_message(data: MessageData):
         async with async_session() as db_session:
             if data.target_type == 'all':
                 result = await db_session.execute(select(Parent.telegram_id).distinct())
-            elif data.target_type == 'sick':
-                # Выбираем всех болеющих
-                result = await db_session.execute(select(Parent.telegram_id).where(Parent.is_sick == True).distinct())
+            elif data.target_type in status_targets:
+                result = await db_session.execute(select(Parent.telegram_id).where(Parent.student_status == data.target_type).distinct())
             elif data.target_type == 'class':
-                result = await db_session.execute(
-                    select(Parent.telegram_id).where(Parent.school_class == data.target_value).distinct()
-                )
+                result = await db_session.execute(select(Parent.telegram_id).where(Parent.school_class == data.target_value).distinct())
             elif data.target_type == 'student':
-                result = await db_session.execute(
-                    select(Parent.telegram_id).where(Parent.telegram_id == int(data.target_value)).distinct()
-                )
+                result = await db_session.execute(select(Parent.telegram_id).where(Parent.telegram_id == int(data.target_value)).distinct())
             else:
                 return {"status": "error"}
                 
             parent_ids = [row[0] for row in result.all()]
             if not parent_ids:
-                return {"status": "error", "message": "Нет получателей (никто не болеет)"}
+                return {"status": "error", "message": "Нет получателей в этой категории"}
                 
             new_msg = MessageHistory(sender_id=user_id, recipient_id=data.target_value, message_text=data.text)
             db_session.add(new_msg)
@@ -531,7 +530,7 @@ async def export_excel(user_id: int = 0):
     ws1.append(headers_parents)
 
     for p in parents:
-        status_text = "Болеет" if p.is_sick else "Здоров"
+        status_text = STATUS_TRANSLATIONS.get(p.student_status, "Неизвестно")
         ws1.append([p.id, p.telegram_id, p.parent_full_name, p.child_full_name, p.school_class, p.email, p.phone, p.address, status_text])
         
     for col in ['C', 'D', 'E', 'F', 'G', 'H', 'I']:
@@ -543,9 +542,7 @@ async def export_excel(user_id: int = 0):
     
     async with async_session() as session:
         for msg in history:
-            ack_result = await session.execute(
-                select(func.count(Acknowledgment.id)).where(Acknowledgment.history_id == msg.id)
-            )
+            ack_result = await session.execute(select(func.count(Acknowledgment.id)).where(Acknowledgment.history_id == msg.id))
             ack_count = ack_result.scalar() or 0
             
             time_str = msg.timestamp.strftime("%d.%m.%Y %H:%M") if msg.timestamp else ""
@@ -555,10 +552,14 @@ async def export_excel(user_id: int = 0):
                 target_display = "Всем родителям"
             elif target_display == 'sick':
                 target_display = "Всем болеющим"
+            elif target_display == 'excused':
+                target_display = "Отсутствующим (уваж.)"
+            elif target_display == 'unexcused':
+                target_display = "Отсутствующим (неуваж.)"
+            elif target_display == 'late':
+                target_display = "Опоздавшим"
             elif target_display.isdigit():
-                parent_result = await session.execute(
-                    select(Parent).where(Parent.telegram_id == int(msg.recipient_id)).limit(1)
-                )
+                parent_result = await session.execute(select(Parent).where(Parent.telegram_id == int(msg.recipient_id)).limit(1))
                 parent = parent_result.scalar_one_or_none()
                 if parent:
                     target_display = f"{parent.parent_full_name} (Класс {parent.school_class})"
