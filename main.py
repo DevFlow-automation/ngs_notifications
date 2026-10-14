@@ -12,7 +12,7 @@ from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
-from sqlalchemy import select, desc, func
+from sqlalchemy import select, desc, func, update
 from dotenv import load_dotenv
 
 from database import init_db, async_session, Parent, MessageHistory, Acknowledgment
@@ -132,7 +132,8 @@ async def process_additional_school_class(message: types.Message, state: FSMCont
                 school_class=school_class,
                 email=data['email'],
                 phone=data['phone'],
-                address=data['address']
+                address=data['address'],
+                is_sick=False
             )
             session.add(new_parent)
             await session.commit()
@@ -252,7 +253,7 @@ async def get_history(user_id: int = 0):
         data = []
         for msg in history:
             if user_id in TEACHERS:
-                if msg.sender_id != user_id and msg.recipient_id != TEACHERS[user_id]:
+                if msg.sender_id != user_id and msg.recipient_id != TEACHERS[user_id] and msg.recipient_id != 'sick':
                     if msg.recipient_id.isdigit():
                         p_res = await db_session.execute(select(Parent.school_class).where(Parent.telegram_id == int(msg.recipient_id)))
                         p_classes = [row[0] for row in p_res.all()]
@@ -261,7 +262,6 @@ async def get_history(user_id: int = 0):
                     else:
                         continue
             
-            # Определяем, кто отправил сообщение
             sender_display = "Неизвестно"
             if msg.sender_id:
                 if msg.sender_id in ADMIN_IDS:
@@ -283,6 +283,8 @@ async def get_history(user_id: int = 0):
             target_display = msg.recipient_id
             if target_display == 'all':
                 target_display = "Всем родителям"
+            elif target_display == 'sick':
+                target_display = "Всем болеющим"
             elif target_display.isdigit():
                 parent_result = await db_session.execute(
                     select(Parent).where(Parent.telegram_id == int(msg.recipient_id)).limit(1)
@@ -308,11 +310,16 @@ async def get_history(user_id: int = 0):
 
 @app.get("/api/parents")
 async def get_all_parents(user_id: int = 0):
-    if user_id not in ADMIN_IDS:
+    if user_id not in ADMIN_IDS and user_id not in DEPUTY_IDS and user_id not in TEACHERS:
         return {"parents": []}
         
     async with async_session() as db_session:
-        result = await db_session.execute(select(Parent).order_by(Parent.school_class, Parent.parent_full_name))
+        # Учителя видят только свой класс, админы видят всех
+        if user_id in TEACHERS:
+            result = await db_session.execute(select(Parent).where(Parent.school_class == TEACHERS[user_id]).order_by(Parent.parent_full_name))
+        else:
+            result = await db_session.execute(select(Parent).order_by(Parent.school_class, Parent.parent_full_name))
+            
         parents = result.scalars().all()
         data = [{
             "id": p.id,
@@ -322,9 +329,32 @@ async def get_all_parents(user_id: int = 0):
             "school_class": p.school_class,
             "email": p.email,
             "phone": p.phone,
-            "address": p.address
+            "address": p.address,
+            "is_sick": p.is_sick
         } for p in parents]
         return {"parents": data}
+
+@app.put("/api/parents/{parent_id}/sick")
+async def toggle_sick(parent_id: int, user_id: int = 0):
+    if user_id not in ADMIN_IDS and user_id not in TEACHERS and user_id not in DEPUTY_IDS:
+        return {"status": "error", "message": "Нет прав"}
+        
+    try:
+        async with async_session() as db_session:
+            result = await db_session.execute(select(Parent).where(Parent.id == parent_id))
+            parent = result.scalar_one_or_none()
+            if not parent:
+                return {"status": "error", "message": "Родитель не найден"}
+                
+            # Учитель может менять статус только ученикам своего класса
+            if user_id in TEACHERS and parent.school_class != TEACHERS[user_id]:
+                return {"status": "error", "message": "Это ученик не из вашего класса"}
+                
+            parent.is_sick = not parent.is_sick
+            await db_session.commit()
+            return {"status": "success", "is_sick": parent.is_sick}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.post("/api/parents")
 async def create_parent_manual(data: ParentCreate, user_id: int = 0):
@@ -340,7 +370,8 @@ async def create_parent_manual(data: ParentCreate, user_id: int = 0):
                 school_class=data.school_class,
                 email=data.email,
                 phone=data.phone,
-                address=data.address
+                address=data.address,
+                is_sick=False
             )
             db_session.add(new_parent)
             await db_session.commit()
@@ -402,7 +433,8 @@ async def api_register_parent(data: RegistrationData):
                 school_class=data.school_class,
                 email=data.email,
                 phone=data.phone,
-                address=data.address
+                address=data.address,
+                is_sick=False
             )
             db_session.add(new_parent)
             await db_session.commit()
@@ -423,8 +455,8 @@ async def send_message(data: MessageData):
 
     if user_id in TEACHERS:
         allowed_class = TEACHERS[user_id]
-        if data.target_type == 'all':
-            return {"status": "error", "message": "Нет прав для массовой рассылки"}
+        if data.target_type == 'all' or data.target_type == 'sick':
+            return {"status": "error", "message": "У вас нет прав для такой массовой рассылки"}
         elif data.target_type == 'class' and data.target_value != allowed_class:
             return {"status": "error", "message": "Можно писать только своему классу"}
         elif data.target_type == 'student':
@@ -438,6 +470,9 @@ async def send_message(data: MessageData):
         async with async_session() as db_session:
             if data.target_type == 'all':
                 result = await db_session.execute(select(Parent.telegram_id).distinct())
+            elif data.target_type == 'sick':
+                # Выбираем всех болеющих
+                result = await db_session.execute(select(Parent.telegram_id).where(Parent.is_sick == True).distinct())
             elif data.target_type == 'class':
                 result = await db_session.execute(
                     select(Parent.telegram_id).where(Parent.school_class == data.target_value).distinct()
@@ -451,7 +486,7 @@ async def send_message(data: MessageData):
                 
             parent_ids = [row[0] for row in result.all()]
             if not parent_ids:
-                return {"status": "error", "message": "Нет получателей"}
+                return {"status": "error", "message": "Нет получателей (никто не болеет)"}
                 
             new_msg = MessageHistory(sender_id=user_id, recipient_id=data.target_value, message_text=data.text)
             db_session.add(new_msg)
@@ -492,13 +527,14 @@ async def export_excel(user_id: int = 0):
     ws1 = wb.active
     ws1.title = "База родителей"
     
-    headers_parents = ["ID", "Telegram ID", "ФИО Родителя", "ФИО Ребенка", "Класс", "Email", "Телефон", "Адрес"]
+    headers_parents = ["ID", "Telegram ID", "ФИО Родителя", "ФИО Ребенка", "Класс", "Email", "Телефон", "Адрес", "Статус"]
     ws1.append(headers_parents)
 
     for p in parents:
-        ws1.append([p.id, p.telegram_id, p.parent_full_name, p.child_full_name, p.school_class, p.email, p.phone, p.address])
+        status_text = "Болеет" if p.is_sick else "Здоров"
+        ws1.append([p.id, p.telegram_id, p.parent_full_name, p.child_full_name, p.school_class, p.email, p.phone, p.address, status_text])
         
-    for col in ['C', 'D', 'E', 'F', 'G', 'H']:
+    for col in ['C', 'D', 'E', 'F', 'G', 'H', 'I']:
         ws1.column_dimensions[col].width = 25
 
     ws2 = wb.create_sheet(title="История рассылок")
@@ -517,6 +553,8 @@ async def export_excel(user_id: int = 0):
             target_display = msg.recipient_id
             if target_display == 'all':
                 target_display = "Всем родителям"
+            elif target_display == 'sick':
+                target_display = "Всем болеющим"
             elif target_display.isdigit():
                 parent_result = await session.execute(
                     select(Parent).where(Parent.telegram_id == int(msg.recipient_id)).limit(1)
