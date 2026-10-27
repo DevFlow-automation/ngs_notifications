@@ -155,7 +155,44 @@
                 <div id="tg_id_block" class="hidden"><label class="block text-sm font-medium mb-1">Telegram ID</label><input type="text" id="edit_telegram_id" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
                 <div><label class="block text-sm font-medium mb-1">ФИО Родителя</label><input type="text" id="edit_parent_name" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
                 <div><label class="block text-sm font-medium mb-1">ФИО Ребенка</label><input type="text" id="edit_child_name" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
-                <div><label class="block text-sm font-medium mb-1">Класс (например, 5А)</label><input type="text" id="edit_school_class" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none uppercase"></div>
+                <div>
+                <label class="block text-sm font-medium mb-1">Класс</label>
+                <select id="school_class" required class="w-full p-3 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                    <option value="" disabled selected>-- Выберите класс --</option>
+                    <optgroup label="Начальная школа">
+                        <option value="1А">1А</option>
+                        <option value="1Б">1Б</option>
+                        <option value="1В">1В</option>
+                        <option value="1Г">1Г</option>
+                        <option value="2А">2А</option>
+                        <option value="2Б">2Б</option>
+                        <option value="2В">2В</option>
+                        <option value="2Г">2Г</option>
+                        <option value="3А">3А</option>
+                        <option value="3Б">3Б</option>
+                        <option value="3В">3В</option>
+                        <option value="3Г">3Г</option>
+                        <option value="4А">4А</option>
+                        <option value="4Б">4Б</option>
+                        <option value="4В">4В</option>
+                    </optgroup>
+                    <optgroup label="Старшая школа">
+                        <option value="5А">5А</option>
+                        <option value="5Б">5Б</option>
+                        <option value="5В">5В</option>
+                        <option value="6А">6А</option>
+                        <option value="6Б">6Б</option>
+                        <option value="7А">7А</option>
+                        <option value="7Б">7Б</option>
+                        <option value="7В">7В</option>
+                        <option value="8А">8А</option>
+                        <option value="8Б">8Б</option>
+                        <option value="9А">9А</option>
+                        <option value="10А">10А</option>
+                        <option value="11А">11А</option>
+                    </optgroup>
+                </select>
+            </div>
                 <div><label class="block text-sm font-medium mb-1">Email</label><input type="text" id="edit_email" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
                 <div><label class="block text-sm font-medium mb-1">Телефон</label><input type="text" id="edit_phone" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
                 <div><label class="block text-sm font-medium mb-1">Адрес</label><input type="text" id="edit_address" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"></div>
