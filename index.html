@@ -52,6 +52,7 @@
         <div class="bg-white p-4 rounded shadow-sm border border-gray-200 mb-8">
             <label for="target_type" class="block mb-2 font-medium">Тип рассылки:</label>
             <select id="target_type" class="w-full mb-4 p-3 border rounded border-gray-300 text-black bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="toggleFields()">
+                <option value="" disabled selected>-- Выберите тип рассылки --</option>
                 <option value="all">Всем родителям</option>
                 <option value="class">Определенному классу</option>
                 <option value="student">Конкретному ученику (родителю)</option>
@@ -447,7 +448,7 @@
             const studentBlock = document.getElementById('student_block');
             const parentBlock = document.getElementById('parent_block');
             
-            if (['all', 'sick', 'excused', 'unexcused', 'late'].includes(type)) {
+            if (['', 'all', 'sick', 'excused', 'unexcused', 'late'].includes(type)) {
                 classBlock.classList.add('hidden'); studentBlock.classList.add('hidden'); parentBlock.classList.add('hidden');
             } else if (type === 'class') {
                 classBlock.classList.remove('hidden'); studentBlock.classList.add('hidden'); parentBlock.classList.add('hidden');
@@ -508,6 +509,12 @@
 
         async function sendMessage() {
             const targetType = document.getElementById('target_type').value;
+            
+            if (!targetType) { 
+                showStatus('Выберите тип рассылки!', 'text-red-500'); 
+                return; 
+            }
+            
             let targetValue = 'all';
             
             if (['sick', 'excused', 'unexcused', 'late'].includes(targetType)) {
@@ -524,6 +531,17 @@
 
             const text = document.getElementById('message').value;
             if (!text.trim()) { showStatus('Введите текст сообщения!', 'text-red-500'); return; }
+
+            if (targetType === 'all') {
+                if (!confirm('ВНИМАНИЕ! Вы собираетесь отправить сообщение ВСЕМ родителям школы. Вы уверены, что хотите продолжить?')) {
+                    return;
+                }
+            }
+
+            const sendBtn = document.querySelector('button[onclick="sendMessage()"]');
+            sendBtn.disabled = true;
+            sendBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
             showStatus('Отправка...', 'text-blue-500');
             
             try {
@@ -538,8 +556,15 @@
                     document.getElementById('message').value = '';
                     document.getElementById('template_select').value = '';
                     setTimeout(() => switchTab('history'), 1500);
-                } else { showStatus(result.message || 'Ошибка при отправке.', 'text-red-500'); }
-            } catch (error) { showStatus('Ошибка соединения с сервером.', 'text-red-500'); }
+                } else { 
+                    showStatus(result.message || 'Ошибка при отправке.', 'text-red-500'); 
+                }
+            } catch (error) { 
+                showStatus('Ошибка соединения с сервером.', 'text-red-500'); 
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
         }
 
         function showStatus(text, colorClass) {
