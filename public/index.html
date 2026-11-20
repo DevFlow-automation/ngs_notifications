@@ -453,34 +453,115 @@
             } catch (error) { tbody.innerHTML = '<tr><td colspan="7" class="text-center py-12 text-rose-500 font-medium">Ошибка загрузки</td></tr>'; }
         }
 
-        function normalizeChildKey(className, childName, fallbackId) {
-            const normChild = String(childName || '').trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
-            const normClass = String(className || '').trim().toLowerCase().replace(/\s+/g, '');
-            if (!normChild) return `id:${fallbackId}`;
-            return `${normClass}::${normChild}`;
+        function normalizeText(val) {
+            return String(val || '')
+                .trim()
+                .toLowerCase()
+                .replace(/ё/g, 'е')
+                .replace(/[^a-zа-я0-9әғқңөұүһі\s]/gi, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function levenshteinDistance(a, b) {
+            if (a === b) return 0;
+            const m = a.length, n = b.length;
+            if (m === 0) return n;
+            if (n === 0) return m;
+            let prev = Array.from({ length: n + 1 }, (_, i) => i);
+            let curr = new Array(n + 1);
+            for (let i = 1; i <= m; i++) {
+                curr[0] = i;
+                for (let j = 1; j <= n; j++) {
+                    const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+                    curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+                }
+                [prev, curr] = [curr, prev];
+            }
+            return prev[n];
+        }
+
+        function stringSimilarity(a, b) {
+            if (!a && !b) return 1;
+            if (!a || !b) return 0;
+            const maxLen = Math.max(a.length, b.length);
+            return maxLen === 0 ? 1 : 1 - levenshteinDistance(a, b) / maxLen;
+        }
+
+        function areSameChildName(nameA, nameB) {
+            const normA = normalizeText(nameA);
+            const normB = normalizeText(nameB);
+            if (!normA || !normB) return false;
+            if (normA === normB) return true;
+
+            const tokensA = normA.split(' ').filter(Boolean);
+            const tokensB = normB.split(' ').filter(Boolean);
+
+            // Если оба имени состоят из >= 2 слов (ФИ / ФИО), сравниваем слова с учётом отчества, перестановки и опечаток (>= 80%)
+            if (tokensA.length >= 2 && tokensB.length >= 2) {
+                const [shorter, longer] = tokensA.length <= tokensB.length ? [tokensA, tokensB] : [tokensB, tokensA];
+                const used = new Set();
+                let totalSim = 0;
+
+                for (const word of shorter) {
+                    let bestIdx = -1;
+                    let bestSim = 0;
+                    for (let i = 0; i < longer.length; i++) {
+                        if (used.has(i)) continue;
+                        const sim = stringSimilarity(word, longer[i]);
+                        if (sim > bestSim) {
+                            bestSim = sim;
+                            bestIdx = i;
+                        }
+                    }
+                    // Каждое слово (и фамилия, и имя) должно совпадать минимум на 80%, чтобы не склеить братьев/сестёр с общей фамилией
+                    if (bestIdx === -1 || bestSim < 0.8) {
+                        return false;
+                    }
+                    used.add(bestIdx);
+                    totalSim += bestSim;
+                }
+                return (totalSim / shorter.length) >= 0.8;
+            }
+
+            // Для однословных записей проверяем общее сходство >= 80%
+            return stringSimilarity(normA, normB) >= 0.8;
         }
 
         function groupStudents(records) {
-            const map = new Map();
+            const groups = [];
             records.forEach(p => {
-                const key = normalizeChildKey(p.school_class, p.child_full_name, p.id);
-                if (!map.has(key)) {
-                    map.set(key, {
-                        key,
-                        child_full_name: p.child_full_name || 'Без имени',
+                const normClass = normalizeText(p.school_class).replace(/\s+/g, '');
+                const childName = (p.child_full_name || '').trim();
+
+                let matchedGroup = null;
+                if (childName) {
+                    matchedGroup = groups.find(g =>
+                        g.normClass === normClass && areSameChildName(g.child_full_name, childName)
+                    );
+                }
+
+                if (!matchedGroup) {
+                    matchedGroup = {
+                        normClass,
+                        child_full_name: childName || 'Без имени',
                         school_class: p.school_class || '',
                         student_status: p.student_status || 'present',
                         parents: []
-                    });
+                    };
+                    groups.push(matchedGroup);
+                } else if (childName.length > matchedGroup.child_full_name.length) {
+                    // Показываем наиболее полное ФИО (например, с отчеством), если один из родителей указал его
+                    matchedGroup.child_full_name = childName;
                 }
-                const group = map.get(key);
-                group.parents.push(p);
+
+                matchedGroup.parents.push(p);
                 // Если у одного из родителей выставлен не-present статус, показываем его
-                if (group.student_status === 'present' && p.student_status && p.student_status !== 'present') {
-                    group.student_status = p.student_status;
+                if (matchedGroup.student_status === 'present' && p.student_status && p.student_status !== 'present') {
+                    matchedGroup.student_status = p.student_status;
                 }
             });
-            return Array.from(map.values());
+            return groups;
         }
 
         function filterDb() {
