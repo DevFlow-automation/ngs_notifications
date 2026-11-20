@@ -22,9 +22,9 @@ export default async function handler(req, res) {
             let parents;
             if (TEACHERS[userId]) {
                 const sClass = TEACHERS[userId];
-                parents = await sql`SELECT * FROM parents WHERE school_class = ${sClass} ORDER BY parent_full_name`;
+                parents = await sql`SELECT * FROM parents WHERE school_class = ${sClass} ORDER BY child_full_name, parent_full_name`;
             } else {
-                parents = await sql`SELECT * FROM parents ORDER BY school_class, parent_full_name`;
+                parents = await sql`SELECT * FROM parents ORDER BY school_class, child_full_name, parent_full_name`;
             }
             // Преобразуем BigInt (telegram_id) в строку, иначе JSON.stringify выдаст ошибку
             const formatted = parents.map(p => ({ ...p, telegram_id: String(p.telegram_id) }));

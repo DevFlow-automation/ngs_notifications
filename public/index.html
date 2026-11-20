@@ -220,7 +220,7 @@
                             <tr>
                                 <th class="w-12">ID</th>
                                 <th id="th_tg_id">TG ID</th>
-                                <th>Родитель / Ребенок</th>
+                                <th>Ребенок / Родитель</th>
                                 <th class="w-20 text-center">Класс</th>
                                 <th class="w-48 text-center">Статус ученика</th>
                                 <th id="th_contacts">Контакты</th>
@@ -489,8 +489,8 @@
                     <td class="text-slate-400 font-medium text-xs">${p.id}</td>
                     ${tgIdCell}
                     <td>
-                        <div class="font-semibold text-slate-900">${p.parent_full_name}</div>
-                        <div class="text-sm text-slate-500 flex items-center gap-1 mt-0.5"><i class="ph-fill ph-student text-slate-400"></i> ${p.child_full_name}</div>
+                        <div class="font-semibold text-slate-900 flex items-center gap-1.5"><i class="ph-fill ph-student text-primary"></i> ${p.child_full_name}</div>
+                        <div class="text-sm text-slate-500 flex items-center gap-1.5 mt-0.5"><i class="ph ph-user text-slate-400"></i> ${p.parent_full_name}</div>
                     </td>
                     <td class="text-center"><span class="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold ring-1 ring-slate-200">${p.school_class}</span></td>
                     <td class="px-4">
