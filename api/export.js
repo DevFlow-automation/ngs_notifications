@@ -13,7 +13,7 @@ const STATUS_TRANSLATIONS = {
 
 // Замените ID на актуальные для вашей школы
 const ADMIN_IDS = [8771384583, 229049117];
-const DEPUTY_IDS = [387863654, 21900086, 87180537, 32542185, 1759984801, 11763622, 1176641277, 117636223, 219000864];
+const DEPUTY_IDS = [387863654, 21900086, 87180537, 32542185, 1759984801, 11763622, 1176641277, 117636223, 219000864, 875096987];
 
 export default async function handler(req, res) {
     if (req.method !== 'GET') return res.status(405).send('Method Not Allowed');
@@ -37,7 +37,7 @@ export default async function handler(req, res) {
                 m.message_text,
                 m.timestamp,
                 (SELECT COUNT(id) FROM acknowledgments a WHERE a.history_id = m.id) as ack_count
-            FROM messages m
+            FROM history m
             ORDER BY m.timestamp DESC
         `;
 
@@ -136,7 +136,7 @@ export default async function handler(req, res) {
         res.setHeader('Content-Disposition', 'attachment; filename="school_database_and_history.xlsx"');
 
         // Конвертируем книгу в буфер и отправляем как ответ
-        const buffer = await workbook.xlsx.writeBuffer();
+        const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
         return res.status(200).send(buffer);
 
     } catch (error) {

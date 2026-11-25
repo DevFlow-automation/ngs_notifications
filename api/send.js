@@ -54,24 +54,67 @@ export default async function handler(req, res) {
         const newMsgId = msgResult[0].id;
 
         let successCount = 0;
+        let failedCount = 0;
+        const unreachableIds = [];
+        const replyMarkup = {
+            inline_keyboard: [[{ text: "Ознакомлен ✅", callback_data: `ack_${newMsgId}` }]]
+        };
 
-        // 2. Делаем рассылку
-        for (const pid of parentIds) {
+        // 2. Делаем рассылку пачками (до 25 сообщений/сек — в пределах лимита Telegram 30 msg/sec)
+        const BATCH_SIZE = 25;
+        const BATCH_INTERVAL_MS = 1000;
+
+        const sendToParent = async (pid) => {
             try {
-                await bot.api.sendMessage(pid, text, {
-                    reply_markup: {
-                        inline_keyboard: [[{ text: "Ознакомлен ✅", callback_data: `ack_${newMsgId}` }]]
-                    }
-                });
-                successCount++;
-                // Искусственная задержка 50мс, чтобы Telegram не заблокировал за спам (Flood Control)
-                await new Promise(resolve => setTimeout(resolve, 50));
+                await bot.api.sendMessage(pid, text, { reply_markup: replyMarkup });
+                return { ok: true };
             } catch (err) {
-                console.error(`Ошибка отправки пользователю ${pid}:`, err.message);
+                const retryAfter = err?.parameters?.retry_after;
+                if (err?.error_code === 429 && retryAfter) {
+                    await new Promise(resolve => setTimeout(resolve, (retryAfter + 0.5) * 1000));
+                    try {
+                        await bot.api.sendMessage(pid, text, { reply_markup: replyMarkup });
+                        return { ok: true };
+                    } catch (retryErr) {
+                        return { ok: false, pid, err: retryErr };
+                    }
+                }
+                return { ok: false, pid, err };
+            }
+        };
+
+        for (let i = 0; i < parentIds.length; i += BATCH_SIZE) {
+            const batchStart = Date.now();
+            const batch = parentIds.slice(i, i + BATCH_SIZE);
+            const results = await Promise.all(batch.map(sendToParent));
+
+            for (const r of results) {
+                if (r.ok) {
+                    successCount++;
+                } else {
+                    failedCount++;
+                    const code = r.err?.error_code;
+                    if (code === 403 || code === 400) {
+                        unreachableIds.push(`${r.pid} (${code})`);
+                    } else {
+                        console.error(`Ошибка отправки пользователю ${r.pid}:`, r.err?.message || r.err);
+                    }
+                }
+            }
+
+            if (i + BATCH_SIZE < parentIds.length) {
+                const waitMs = Math.max(0, BATCH_INTERVAL_MS - (Date.now() - batchStart));
+                if (waitMs > 0) {
+                    await new Promise(resolve => setTimeout(resolve, waitMs));
+                }
             }
         }
 
-        return res.status(200).json({ status: "success", count: successCount });
+        if (unreachableIds.length > 0) {
+            console.warn(`Недоставлено (бот заблокирован/удалён/чат не найден, ${unreachableIds.length} шт.): ${unreachableIds.join(', ')}`);
+        }
+
+        return res.status(200).json({ status: "success", count: successCount, failed: failedCount });
     } catch (error) {
         console.error("Ошибка при рассылке:", error);
         return res.status(500).json({ status: "error", message: "Ошибка БД при рассылке." });
