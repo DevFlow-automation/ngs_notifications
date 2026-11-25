@@ -1,5 +1,5 @@
 import { neon } from '@neondatabase/serverless';
-import { ADMIN_IDS, ensureBotStatusColumns } from '../../lib/botStatus.mjs';
+import { ADMIN_IDS, ensureBotStatusColumns } from '../../lib/botStatus.js';
 
 const sql = neon(process.env.DATABASE_URL);
 

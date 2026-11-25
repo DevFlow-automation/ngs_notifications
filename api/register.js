@@ -4,7 +4,7 @@ import {
     classifyTelegramError,
     ensureBotStatusColumns,
     updateBotStatusSingle
-} from '../lib/botStatus.mjs';
+} from '../lib/botStatus.js';
 
 const sql = neon(process.env.DATABASE_URL);
 const bot = new Bot(process.env.BOT_TOKEN);

@@ -1,6 +1,6 @@
 import { neon } from '@neondatabase/serverless';
 import exceljs from 'exceljs';
-import { ADMIN_IDS, BOT_STATUS_LABELS, ensureBotStatusColumns } from '../lib/botStatus.mjs';
+import { ADMIN_IDS, BOT_STATUS_LABELS, ensureBotStatusColumns } from '../lib/botStatus.js';
 
 const sql = neon(process.env.DATABASE_URL);
 
