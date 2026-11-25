@@ -216,6 +216,17 @@
                         <input type="text" id="searchInput" oninput="filterDb()" placeholder="Поиск по ФИО, классу..." class="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors">
                     </div>
                 </div>
+
+                <!-- Панель статусов бота (только для администратора) -->
+                <div id="admin_bot_status_bar" class="hidden px-4 py-3 border-b border-slate-100 bg-white flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                    <div class="flex flex-wrap items-center gap-1.5" id="bot_status_filters"></div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span id="bot_check_result" class="text-xs font-medium text-slate-500"></span>
+                        <button id="btn_check_bot_status" onclick="checkBotStatuses()" class="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white text-xs font-semibold py-2 px-3.5 rounded-lg shadow-sm transition-all">
+                            <i class="ph ph-arrows-clockwise text-sm"></i> Проверить доступность бота
+                        </button>
+                    </div>
+                </div>
                 
                 <div class="table-container">
                     <table>
@@ -321,7 +332,16 @@
         let currentClassData = [];
         let editingParentId = null;
         let isCreatingNew = false;
-        let currentDbData = []; 
+        let currentDbData = [];
+        let botStatusFilter = 'all';
+
+        const botStatusMeta = {
+            active: { label: 'Активен', icon: 'ph-check-circle', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' },
+            blocked: { label: 'Заблокировал бота', icon: 'ph-prohibit', cls: 'bg-rose-50 text-rose-700 ring-rose-600/20' },
+            not_started: { label: 'Не запускал бота', icon: 'ph-warning-circle', cls: 'bg-amber-50 text-amber-700 ring-amber-600/20' },
+            deactivated: { label: 'Аккаунт удалён', icon: 'ph-user-minus', cls: 'bg-slate-200 text-slate-700 ring-slate-500/20' },
+            unknown: { label: 'Не проверен', icon: 'ph-question', cls: 'bg-slate-100 text-slate-500 ring-slate-400/20' }
+        };
 
         // Обновленные красивые бейджи для статусов
         const statusStyles = {
@@ -347,6 +367,10 @@
                 }
 
                 document.getElementById('btn_export').href = `/api/export?user_id=${userId}`;
+
+                if (userRole === 'admin') {
+                    document.getElementById('admin_bot_status_bar').classList.remove('hidden');
+                }
 
                 if (userRole === 'teacher') {
                     document.getElementById('btn_export').style.display = 'none';
@@ -564,13 +588,120 @@
             return groups;
         }
 
+        function matchesBotFilter(parent, filterKey) {
+            const st = parent.bot_status || 'unknown';
+            if (filterKey === 'all') return true;
+            if (filterKey === 'problem') return st === 'blocked' || st === 'not_started' || st === 'deactivated';
+            return st === filterKey;
+        }
+
+        function setBotStatusFilter(filterKey) {
+            botStatusFilter = filterKey;
+            filterDb();
+        }
+
+        function renderBotStatusBar() {
+            if (userRole !== 'admin') return;
+            const container = document.getElementById('bot_status_filters');
+            if (!container) return;
+
+            // Считаем уникальные Telegram-аккаунты по каждому статусу
+            const seenByStatus = {
+                all: new Set(),
+                problem: new Set(),
+                blocked: new Set(),
+                not_started: new Set(),
+                deactivated: new Set(),
+                active: new Set(),
+                unknown: new Set()
+            };
+
+            currentDbData.forEach(p => {
+                const key = String(p.telegram_id || p.id);
+                const st = p.bot_status || 'unknown';
+                seenByStatus.all.add(key);
+                if (seenByStatus[st]) seenByStatus[st].add(key);
+                if (st === 'blocked' || st === 'not_started' || st === 'deactivated') {
+                    seenByStatus.problem.add(key);
+                }
+            });
+
+            const filters = [
+                { key: 'all', label: 'Все', count: seenByStatus.all.size, activeCls: 'bg-slate-900 text-white', idleCls: 'bg-slate-100 text-slate-700 hover:bg-slate-200' },
+                { key: 'problem', label: 'Проблемные', count: seenByStatus.problem.size, activeCls: 'bg-rose-600 text-white', idleCls: 'bg-rose-50 text-rose-700 hover:bg-rose-100' },
+                { key: 'blocked', label: 'Заблокировали', count: seenByStatus.blocked.size, activeCls: 'bg-rose-600 text-white', idleCls: 'bg-rose-50/70 text-rose-700 hover:bg-rose-100' },
+                { key: 'not_started', label: 'Не запускали', count: seenByStatus.not_started.size, activeCls: 'bg-amber-600 text-white', idleCls: 'bg-amber-50 text-amber-800 hover:bg-amber-100' },
+                { key: 'deactivated', label: 'Удалён аккаунт', count: seenByStatus.deactivated.size, activeCls: 'bg-slate-700 text-white', idleCls: 'bg-slate-100 text-slate-600 hover:bg-slate-200' },
+                { key: 'active', label: 'Активны', count: seenByStatus.active.size, activeCls: 'bg-emerald-600 text-white', idleCls: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' }
+            ];
+
+            container.innerHTML = filters.map(f => {
+                const isActive = botStatusFilter === f.key;
+                return `<button type="button" onclick="setBotStatusFilter('${f.key}')" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${isActive ? f.activeCls : f.idleCls}">
+                    <span>${f.label}</span>
+                    <span class="px-1.5 py-0.5 rounded-full text-[11px] ${isActive ? 'bg-white/20 text-white' : 'bg-white/80 text-slate-700'}">${f.count}</span>
+                </button>`;
+            }).join('');
+        }
+
+        async function checkBotStatuses() {
+            if (userRole !== 'admin') return;
+            const btn = document.getElementById('btn_check_bot_status');
+            const resEl = document.getElementById('bot_check_result');
+            if (!btn) return;
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="ph ph-spinner-gap animate-spin text-sm"></i> Проверяем...';
+            if (resEl) {
+                resEl.className = 'text-xs font-medium text-primary';
+                resEl.textContent = 'Проверка без отправки сообщений...';
+            }
+
+            try {
+                const response = await fetch(`/api/check-bot-status?user_id=${userId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    if (resEl) {
+                        resEl.className = 'text-xs font-medium text-emerald-700';
+                        resEl.textContent = `Проверено: ${result.total} • Активны: ${result.active} • Заблокировали: ${result.blocked} • Не запускали: ${result.not_started}` + (result.deactivated ? ` • Удалены: ${result.deactivated}` : '');
+                    }
+                    await loadDb();
+                } else {
+                    if (resEl) {
+                        resEl.className = 'text-xs font-medium text-rose-600';
+                        resEl.textContent = result.message || 'Ошибка проверки';
+                    }
+                }
+            } catch (e) {
+                if (resEl) {
+                    resEl.className = 'text-xs font-medium text-rose-600';
+                    resEl.textContent = 'Ошибка сети при проверке';
+                }
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ph ph-arrows-clockwise text-sm"></i> Проверить доступность бота';
+            }
+        }
+
         function filterDb() {
+            renderBotStatusBar();
             const query = document.getElementById('searchInput').value.trim().toLowerCase();
             const groupedAll = groupStudents(currentDbData);
             const filteredGroups = groupedAll.filter(group => {
+                if (userRole === 'admin' && botStatusFilter !== 'all') {
+                    const hasMatchingParent = group.parents.some(p => matchesBotFilter(p, botStatusFilter));
+                    if (!hasMatchingParent) return false;
+                }
                 if (!query) return true;
                 const parentsStr = group.parents
-                    .map(p => `${p.parent_full_name || ''} ${p.phone || ''} ${p.email || ''} ${p.telegram_id || ''} ${p.id || ''}`)
+                    .map(p => {
+                        const botLabel = userRole === 'admin' ? (botStatusMeta[p.bot_status || 'unknown']?.label || '') : '';
+                        return `${p.parent_full_name || ''} ${p.phone || ''} ${p.email || ''} ${p.telegram_id || ''} ${p.id || ''} ${botLabel}`;
+                    })
                     .join(' ');
                 const searchStr = `${group.child_full_name} ${group.school_class} ${statusNames[group.student_status || 'present']} ${parentsStr}`.toLowerCase();
                 return searchStr.includes(query);
@@ -603,12 +734,20 @@
                 
                 const selectClass = `w-full px-2 py-1.5 text-xs font-semibold rounded-lg ring-1 outline-none transition-all cursor-pointer ${style.bg} ${style.text} ${style.ring} hover:opacity-80`;
 
-                const parentsListHtml = group.parents.map(p => `
-                    <div class="text-sm text-slate-500 flex items-center gap-1.5 mt-1">
-                        <i class="ph ph-user text-slate-400 shrink-0"></i>
-                        <span>${p.parent_full_name || '—'}</span>
-                    </div>
-                `).join('');
+                const parentsListHtml = group.parents.map(p => {
+                    let botBadgeHtml = '';
+                    if (userRole === 'admin') {
+                        const bMeta = botStatusMeta[p.bot_status || 'unknown'] || botStatusMeta.unknown;
+                        botBadgeHtml = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ring-1 ${bMeta.cls}"><i class="ph-fill ${bMeta.icon}"></i>${bMeta.label}</span>`;
+                    }
+                    return `
+                        <div class="text-sm text-slate-500 flex flex-wrap items-center gap-1.5 mt-1">
+                            <i class="ph ph-user text-slate-400 shrink-0"></i>
+                            <span>${p.parent_full_name || '—'}</span>
+                            ${botBadgeHtml}
+                        </div>
+                    `;
+                }).join('');
 
                 const multiBadge = isMulti
                     ? `<span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-600/15 rounded-full text-[11px] font-semibold">${group.parents.length} род.</span>`
@@ -779,7 +918,10 @@
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
-                    showStatus(`<i class="ph-fill ph-check-circle"></i> Успешно отправлено: ${result.count}`, 'text-emerald-600');
+                    const failedNote = (userRole === 'admin' && result.failed > 0)
+                        ? ` <span class="text-rose-600">(не доставлено: ${result.failed})</span>`
+                        : '';
+                    showStatus(`<i class="ph-fill ph-check-circle"></i> Успешно отправлено: ${result.count}${failedNote}`, 'text-emerald-600');
                     document.getElementById('message').value = '';
                     setTimeout(() => switchTab('history'), 1500);
                 } else showStatus(result.message || 'Ошибка', 'text-rose-500');

@@ -1,5 +1,6 @@
 import { Bot } from 'grammy';
 import { neon } from '@neondatabase/serverless';
+import { updateBotStatusSingle } from '../lib/botStatus.mjs';
 
 const sql = neon(process.env.DATABASE_URL);
 const bot = new Bot(process.env.BOT_TOKEN);
@@ -55,11 +56,30 @@ bot.command('start', async (ctx) => {
                 }
             );
         } else {
+            await updateBotStatusSingle(sql, userId, 'active').catch(() => {});
             await ctx.reply("Вы уже зарегистрированы в системе оповещений.\n\nЕсли вы хотите добавить данные еще одного ребенка, отправьте команду /add_child");
         }
     } catch (error) {
         console.error("Ошибка БД при /start:", error);
         await ctx.reply("Система временно недоступна. Пожалуйста, попробуйте позже.");
+    }
+});
+
+// Отслеживаем блокировку / разблокировку бота родителем в реальном времени
+bot.on('my_chat_member', async (ctx) => {
+    if (ctx.chat?.type !== 'private') return;
+    const tgUserId = ctx.from?.id || ctx.chat?.id;
+    const newStatus = ctx.myChatMember?.new_chat_member?.status;
+    if (!tgUserId || !newStatus) return;
+
+    try {
+        if (newStatus === 'kicked') {
+            await updateBotStatusSingle(sql, tgUserId, 'blocked');
+        } else if (newStatus === 'member') {
+            await updateBotStatusSingle(sql, tgUserId, 'active');
+        }
+    } catch (error) {
+        console.error('Ошибка обновления bot_status в my_chat_member:', error);
     }
 });
 
@@ -80,6 +100,7 @@ bot.callbackQuery(/ack_(\d+)/, async (ctx) => {
                 VALUES (${historyId}, ${userId}, NOW())
             `;
         }
+        await updateBotStatusSingle(sql, userId, 'active').catch(() => {});
         await ctx.answerCallbackQuery("Вы подтвердили ознакомление!");
         await ctx.editMessageReplyMarkup(); 
     } catch (error) {

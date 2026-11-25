@@ -1,5 +1,10 @@
 import { neon } from '@neondatabase/serverless';
 import { Bot } from 'grammy';
+import {
+    classifyTelegramError,
+    ensureBotStatusColumns,
+    updateBotStatusesBatch
+} from '../lib/botStatus.mjs';
 
 const sql = neon(process.env.DATABASE_URL);
 const bot = new Bot(process.env.BOT_TOKEN);
@@ -56,6 +61,7 @@ export default async function handler(req, res) {
         let successCount = 0;
         let failedCount = 0;
         const unreachableIds = [];
+        const statusByTgId = new Map();
         const replyMarkup = {
             inline_keyboard: [[{ text: "Ознакомлен ✅", callback_data: `ack_${newMsgId}` }]]
         };
@@ -67,14 +73,14 @@ export default async function handler(req, res) {
         const sendToParent = async (pid) => {
             try {
                 await bot.api.sendMessage(pid, text, { reply_markup: replyMarkup });
-                return { ok: true };
+                return { ok: true, pid };
             } catch (err) {
                 const retryAfter = err?.parameters?.retry_after;
                 if (err?.error_code === 429 && retryAfter) {
                     await new Promise(resolve => setTimeout(resolve, (retryAfter + 0.5) * 1000));
                     try {
                         await bot.api.sendMessage(pid, text, { reply_markup: replyMarkup });
-                        return { ok: true };
+                        return { ok: true, pid };
                     } catch (retryErr) {
                         return { ok: false, pid, err: retryErr };
                     }
@@ -91,11 +97,13 @@ export default async function handler(req, res) {
             for (const r of results) {
                 if (r.ok) {
                     successCount++;
+                    statusByTgId.set(String(r.pid), 'active');
                 } else {
                     failedCount++;
-                    const code = r.err?.error_code;
-                    if (code === 403 || code === 400) {
-                        unreachableIds.push(`${r.pid} (${code})`);
+                    const classified = classifyTelegramError(r.err);
+                    if (classified) {
+                        statusByTgId.set(String(r.pid), classified);
+                        unreachableIds.push(`${r.pid} (${classified})`);
                     } else {
                         console.error(`Ошибка отправки пользователю ${r.pid}:`, r.err?.message || r.err);
                     }
@@ -108,6 +116,13 @@ export default async function handler(req, res) {
                     await new Promise(resolve => setTimeout(resolve, waitMs));
                 }
             }
+        }
+
+        try {
+            await ensureBotStatusColumns(sql);
+            await updateBotStatusesBatch(sql, statusByTgId);
+        } catch (statusErr) {
+            console.error('Ошибка обновления bot_status после рассылки:', statusErr);
         }
 
         if (unreachableIds.length > 0) {

@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import { ADMIN_IDS, ensureBotStatusColumns } from '../../lib/botStatus.mjs';
 
 const sql = neon(process.env.DATABASE_URL);
 
@@ -6,6 +7,7 @@ export default async function handler(req, res) {
     // Получение всех родителей (GET)
     if (req.method === 'GET') {
         const userId = parseInt(req.query.user_id, 10) || 0;
+        const isAdmin = ADMIN_IDS.includes(userId);
         const TEACHERS = {
         593614259: "1А", 7475228092: "1Б", 165555820: "1В", 6759744115: "1Г",
         262935335: "2А", 2067119625: "2Б", 192592122: "2В", 261773072: "2Г",
@@ -19,6 +21,7 @@ export default async function handler(req, res) {
 }; // Укажите ваших учителей
 
         try {
+            await ensureBotStatusColumns(sql);
             let parents;
             if (TEACHERS[userId]) {
                 const sClass = TEACHERS[userId];
@@ -26,8 +29,19 @@ export default async function handler(req, res) {
             } else {
                 parents = await sql`SELECT * FROM parents ORDER BY school_class, child_full_name, parent_full_name`;
             }
-            // Преобразуем BigInt (telegram_id) в строку, иначе JSON.stringify выдаст ошибку
-            const formatted = parents.map(p => ({ ...p, telegram_id: String(p.telegram_id) }));
+            // Преобразуем BigInt (telegram_id) в строку; статус бота отдаем только админу
+            const formatted = parents.map(p => {
+                if (isAdmin) {
+                    return {
+                        ...p,
+                        telegram_id: String(p.telegram_id),
+                        bot_status: p.bot_status || 'unknown',
+                        bot_status_updated_at: p.bot_status_updated_at || null
+                    };
+                }
+                const { bot_status, bot_status_updated_at, ...rest } = p;
+                return { ...rest, telegram_id: String(p.telegram_id) };
+            });
             return res.status(200).json({ parents: formatted });
         } catch (error) {
             return res.status(500).json({ error: error.message });
@@ -38,9 +52,10 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
         const { telegram_id, parent_full_name, child_full_name, school_class, email, phone, address } = req.body;
         try {
+            await ensureBotStatusColumns(sql);
             await sql`
-                INSERT INTO parents (telegram_id, parent_full_name, child_full_name, school_class, email, phone, address, student_status)
-                VALUES (${telegram_id}, ${parent_full_name}, ${child_full_name}, ${school_class}, ${email}, ${phone}, ${address}, 'present')
+                INSERT INTO parents (telegram_id, parent_full_name, child_full_name, school_class, email, phone, address, student_status, bot_status, bot_status_updated_at)
+                VALUES (${telegram_id}, ${parent_full_name}, ${child_full_name}, ${school_class}, ${email}, ${phone}, ${address}, 'present', 'not_started', NOW())
             `;
             return res.status(200).json({ status: "success" });
         } catch (error) {

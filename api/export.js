@@ -1,5 +1,6 @@
 import { neon } from '@neondatabase/serverless';
 import exceljs from 'exceljs';
+import { ADMIN_IDS, BOT_STATUS_LABELS, ensureBotStatusColumns } from '../lib/botStatus.mjs';
 
 const sql = neon(process.env.DATABASE_URL);
 
@@ -12,20 +13,22 @@ const STATUS_TRANSLATIONS = {
 };
 
 // Замените ID на актуальные для вашей школы
-const ADMIN_IDS = [8771384583, 229049117];
 const DEPUTY_IDS = [387863654, 21900086, 87180537, 32542185, 1759984801, 11763622, 1176641277, 117636223, 219000864, 875096987];
 
 export default async function handler(req, res) {
     if (req.method !== 'GET') return res.status(405).send('Method Not Allowed');
 
     const userId = parseInt(req.query.user_id, 10) || 0;
+    const isAdmin = ADMIN_IDS.includes(userId);
 
     // Проверка прав: экспорт доступен только админам и завучам
-    if (!ADMIN_IDS.includes(userId) && !DEPUTY_IDS.includes(userId)) {
+    if (!isAdmin && !DEPUTY_IDS.includes(userId)) {
         return res.status(403).send("<h1>Нет доступа</h1>");
     }
 
     try {
+        await ensureBotStatusColumns(sql);
+
         // 1. Запрашиваем данные из базы Neon
         const parents = await sql`SELECT * FROM parents ORDER BY school_class, parent_full_name`;
 
@@ -47,8 +50,8 @@ export default async function handler(req, res) {
         // --- ЛИСТ 1: База родителей ---
         const wsParents = workbook.addWorksheet('База родителей');
 
-        // Настраиваем колонки и их ширину
-        wsParents.columns = [
+        // Настраиваем колонки и их ширину (колонка статуса бота — только для админа)
+        const parentColumns = [
             { header: 'ID', key: 'id', width: 10 },
             { header: 'Telegram ID', key: 'telegram_id', width: 15 },
             { header: 'ФИО Родителя', key: 'parent_full_name', width: 30 },
@@ -59,13 +62,17 @@ export default async function handler(req, res) {
             { header: 'Адрес', key: 'address', width: 35 },
             { header: 'Статус', key: 'status', width: 20 }
         ];
+        if (isAdmin) {
+            parentColumns.push({ header: 'Статус бота', key: 'bot_status', width: 22 });
+        }
+        wsParents.columns = parentColumns;
 
         // Стилизуем заголовок (жирный текст)
         wsParents.getRow(1).font = { bold: true };
 
         // Заполняем данные
         parents.forEach(p => {
-            wsParents.addRow({
+            const row = {
                 id: p.id,
                 telegram_id: String(p.telegram_id), // Преобразуем BigInt в строку
                 parent_full_name: p.parent_full_name,
@@ -75,7 +82,11 @@ export default async function handler(req, res) {
                 phone: p.phone,
                 address: p.address,
                 status: STATUS_TRANSLATIONS[p.student_status] || "Неизвестно"
-            });
+            };
+            if (isAdmin) {
+                row.bot_status = BOT_STATUS_LABELS[p.bot_status || 'unknown'] || 'Не проверен';
+            }
+            wsParents.addRow(row);
         });
 
 
