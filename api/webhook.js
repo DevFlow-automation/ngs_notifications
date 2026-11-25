@@ -1,23 +1,10 @@
 import { Bot } from 'grammy';
 import { neon } from '@neondatabase/serverless';
+import { ADMIN_IDS, DEPUTY_IDS, TEACHERS, verifyWebhookSecret } from '../lib/auth.js';
 import { updateBotStatusSingle } from '../lib/botStatus.js';
 
 const sql = neon(process.env.DATABASE_URL);
 const bot = new Bot(process.env.BOT_TOKEN);
-
-const ADMIN_IDS = [8771384583, 229049117]; 
-const DEPUTY_IDS = [387863654, 21900086, 87180537, 32542185, 1759984801, 11763622, 1176641277, 117636223, 219000864,875096987];
-const TEACHERS = {
-    593614259: "1А", 7475228092: "1Б", 165555820: "1В", 6759744115: "1Г",
-    262935335: "2А", 2067119625: "2Б", 192592122: "2В", 261773072: "2Г",
-    843534212: "3А", 83655322: "3Б", 1579165503: "3В", 1849602045: "3Г",
-    389444120: "4А", 8300203162: "4Б", 132622662: "4В",
-    267481288: "5А", 285756001: "5Б", 937544028: "5В",
-    127589326: "6А", 905178719: "6Б",
-    8885418064: "7А", 8099039998: "7Б", 144330475: "7В",
-    241743825: "8А", 42760022: "8Б",
-    1329417314: "9А", 124341010: "10А", 539135124: "11А"
-};
 
 // Глобальный перехватчик ошибок бота (защита от падений)
 bot.catch((err) => {
@@ -114,6 +101,9 @@ bot.callbackQuery(/ack_(\d+)/, async (ctx) => {
 // Пуленепробиваемый обработчик для Vercel Serverless
 export default async function handler(req, res) {
     if (req.method === 'POST') {
+        if (!verifyWebhookSecret(req)) {
+            return res.status(403).send('Forbidden');
+        }
         try {
             // Явная инициализация бота для бессерверной среды
             await bot.init(); 

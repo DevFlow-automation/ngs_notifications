@@ -1,5 +1,6 @@
 import { neon } from '@neondatabase/serverless';
 import { Bot } from 'grammy';
+import { authenticateRequest } from '../lib/auth.js';
 import {
     classifyTelegramError,
     ensureBotStatusColumns,
@@ -8,52 +9,86 @@ import {
 
 const sql = neon(process.env.DATABASE_URL);
 const bot = new Bot(process.env.BOT_TOKEN);
-const ADMIN_IDS = [8771384583, 229049117]; 
-const DEPUTY_IDS = [387863654, 21900086, 87180537, 32542185, 1759984801, 11763622, 1176641277, 117636223, 219000864,875096987];
-const TEACHERS = {
-    593614259: "1А", 7475228092: "1Б", 165555820: "1В", 6759744115: "1Г",
-    262935335: "2А", 2067119625: "2Б", 192592122: "2В", 261773072: "2Г",
-    843534212: "3А", 83655322: "3Б", 1579165503: "3В", 1849602045: "3Г",
-    389444120: "4А", 8300203162: "4Б", 132622662: "4В",
-    267481288: "5А", 285756001: "5Б", 937544028: "5В",
-    127589326: "6А", 905178719: "6Б",
-    8885418064: "7А", 8099039998: "7Б", 144330475: "7В",
-    241743825: "8А", 42760022: "8Б",
-    1329417314: "9А", 124341010: "10А", 539135124: "11А"
-};
-export default async function handler(req, res) {
-    if (req.method !== 'POST') return res.status(405).json({ status: "error", message: "Method Not Allowed" });
 
-    const { target_type, target_value, text, user_id } = req.body;
+export default async function handler(req, res) {
+    if (req.method !== 'POST') {
+        return res.status(405).json({ status: 'error', message: 'Method Not Allowed' });
+    }
+
+    const auth = authenticateRequest(req);
+    if (!auth.authenticated) {
+        return res.status(401).json({ status: 'error', message: 'Требуется авторизация через Telegram' });
+    }
+    if (auth.role === 'none') {
+        return res.status(403).json({ status: 'error', message: 'Нет доступа к рассылкам' });
+    }
+
+    const { target_type, target_value } = req.body || {};
+    const text = String(req.body?.text || '').trim();
     const statusTargets = ['sick', 'excused', 'unexcused', 'late'];
+
+    if (!text || text.length > 4096) {
+        return res.status(400).json({ status: 'error', message: 'Текст сообщения должен быть от 1 до 4096 символов' });
+    }
+
+    // Ограничения прав для классного руководителя
+    if (auth.role === 'teacher') {
+        if (target_type !== 'class' && target_type !== 'student') {
+            return res.status(403).json({ status: 'error', message: 'Учитель может отправлять сообщения только своему классу или ученику своего класса' });
+        }
+        if (target_type === 'class' && String(target_value || '').trim() !== auth.teacherClass) {
+            return res.status(403).json({ status: 'error', message: 'Запрещена рассылка в чужой класс' });
+        }
+    }
 
     try {
         let parentIds = [];
+        let recipientRecordValue = String(target_value || '');
 
         // Логика выборки получателей из базы
         if (target_type === 'all') {
             const rows = await sql`SELECT DISTINCT telegram_id FROM parents`;
             parentIds = rows.map(r => r.telegram_id);
+            recipientRecordValue = 'all';
         } else if (statusTargets.includes(target_type)) {
             const rows = await sql`SELECT DISTINCT telegram_id FROM parents WHERE student_status = ${target_type}`;
             parentIds = rows.map(r => r.telegram_id);
+            recipientRecordValue = target_type;
         } else if (target_type === 'class') {
-            const rows = await sql`SELECT DISTINCT telegram_id FROM parents WHERE school_class = ${target_value}`;
+            const targetClass = String(target_value || '').trim();
+            if (!targetClass) return res.status(400).json({ status: 'error', message: 'Не указан класс' });
+            const rows = await sql`SELECT DISTINCT telegram_id FROM parents WHERE school_class = ${targetClass}`;
             parentIds = rows.map(r => r.telegram_id);
+            recipientRecordValue = targetClass;
         } else if (target_type === 'student') {
-            parentIds = [parseInt(target_value, 10)];
+            const targetTgId = String(target_value || '').trim();
+            if (!/^\d{5,15}$/.test(targetTgId)) {
+                return res.status(400).json({ status: 'error', message: 'Некорректный получатель' });
+            }
+            if (auth.role === 'teacher') {
+                const check = await sql`
+                    SELECT 1 FROM parents
+                    WHERE telegram_id = ${targetTgId} AND school_class = ${auth.teacherClass}
+                    LIMIT 1
+                `;
+                if (check.length === 0) {
+                    return res.status(403).json({ status: 'error', message: 'Этот родитель не относится к вашему классу' });
+                }
+            }
+            parentIds = [targetTgId];
+            recipientRecordValue = targetTgId;
         } else {
-            return res.status(400).json({ status: "error", message: "Неверный тип рассылки" });
+            return res.status(400).json({ status: 'error', message: 'Неверный тип рассылки' });
         }
 
         if (parentIds.length === 0) {
-            return res.status(400).json({ status: "error", message: "Нет получателей в этой категории" });
+            return res.status(400).json({ status: 'error', message: 'Нет получателей в этой категории' });
         }
 
-        // 1. Создаем запись в истории сообщений и получаем её ID (RETURNING id)
-       const msgResult = await sql`
+        // 1. Создаем запись в истории сообщений (sender_id берется строго из проверенного Telegram initData)
+        const msgResult = await sql`
             INSERT INTO history (sender_id, recipient_id, message_text, timestamp)
-            VALUES (${user_id}, ${target_value}, ${text}, NOW())
+            VALUES (${auth.userId}, ${recipientRecordValue}, ${text}, NOW())
             RETURNING id
         `;
         const newMsgId = msgResult[0].id;
@@ -129,9 +164,13 @@ export default async function handler(req, res) {
             console.warn(`Недоставлено (бот заблокирован/удалён/чат не найден, ${unreachableIds.length} шт.): ${unreachableIds.join(', ')}`);
         }
 
-        return res.status(200).json({ status: "success", count: successCount, failed: failedCount });
+        const resp = { status: 'success', count: successCount };
+        if (auth.role === 'admin') {
+            resp.failed = failedCount;
+        }
+        return res.status(200).json(resp);
     } catch (error) {
-        console.error("Ошибка при рассылке:", error);
-        return res.status(500).json({ status: "error", message: "Ошибка БД при рассылке." });
+        console.error('Ошибка при рассылке:', error);
+        return res.status(500).json({ status: 'error', message: 'Ошибка БД при рассылке.' });
     }
 }

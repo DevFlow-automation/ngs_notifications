@@ -1,6 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import exceljs from 'exceljs';
-import { ADMIN_IDS, BOT_STATUS_LABELS, ensureBotStatusColumns } from '../lib/botStatus.js';
+import { authenticateRequest, sanitizeExcelCell } from '../lib/auth.js';
+import { BOT_STATUS_LABELS, ensureBotStatusColumns } from '../lib/botStatus.js';
 
 const sql = neon(process.env.DATABASE_URL);
 
@@ -12,17 +13,18 @@ const STATUS_TRANSLATIONS = {
     "late": "Опоздал"
 };
 
-// Замените ID на актуальные для вашей школы
-const DEPUTY_IDS = [387863654, 21900086, 87180537, 32542185, 1759984801, 11763622, 1176641277, 117636223, 219000864, 875096987];
-
 export default async function handler(req, res) {
     if (req.method !== 'GET') return res.status(405).send('Method Not Allowed');
 
-    const userId = parseInt(req.query.user_id, 10) || 0;
-    const isAdmin = ADMIN_IDS.includes(userId);
+    const auth = authenticateRequest(req, { allowExportToken: true });
+    if (!auth.authenticated) {
+        return res.status(401).send("<h1>Требуется авторизация</h1>");
+    }
+
+    const isAdmin = auth.role === 'admin';
 
     // Проверка прав: экспорт доступен только админам и завучам
-    if (!isAdmin && !DEPUTY_IDS.includes(userId)) {
+    if (!isAdmin && auth.role !== 'deputy') {
         return res.status(403).send("<h1>Нет доступа</h1>");
     }
 
@@ -70,17 +72,17 @@ export default async function handler(req, res) {
         // Стилизуем заголовок (жирный текст)
         wsParents.getRow(1).font = { bold: true };
 
-        // Заполняем данные
+        // Заполняем данные (с защитой от формульных инъекций в Excel)
         parents.forEach(p => {
             const row = {
                 id: p.id,
                 telegram_id: String(p.telegram_id), // Преобразуем BigInt в строку
-                parent_full_name: p.parent_full_name,
-                child_full_name: p.child_full_name,
-                school_class: p.school_class,
-                email: p.email,
-                phone: p.phone,
-                address: p.address,
+                parent_full_name: sanitizeExcelCell(p.parent_full_name),
+                child_full_name: sanitizeExcelCell(p.child_full_name),
+                school_class: sanitizeExcelCell(p.school_class),
+                email: sanitizeExcelCell(p.email),
+                phone: sanitizeExcelCell(p.phone),
+                address: sanitizeExcelCell(p.address),
                 status: STATUS_TRANSLATIONS[p.student_status] || "Неизвестно"
             };
             if (isAdmin) {
@@ -135,8 +137,8 @@ export default async function handler(req, res) {
             wsHistory.addRow({
                 id: msg.id,
                 time: timeStr,
-                target: targetDisplay,
-                text: msg.message_text,
+                target: sanitizeExcelCell(targetDisplay),
+                text: sanitizeExcelCell(msg.message_text),
                 ack_count: Number(msg.ack_count)
             });
         });

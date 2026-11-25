@@ -115,7 +115,10 @@
             try {
                 const response = await fetch('/api/register', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(tg && tg.initData ? { 'X-Telegram-Init-Data': tg.initData } : {})
+                    },
                     body: JSON.stringify(data)
                 });
 

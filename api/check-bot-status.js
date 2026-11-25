@@ -1,7 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { Bot } from 'grammy';
+import { authenticateRequest } from '../lib/auth.js';
 import {
-    ADMIN_IDS,
     classifyTelegramError,
     ensureBotStatusColumns,
     updateBotStatusesBatch
@@ -15,8 +15,11 @@ export default async function handler(req, res) {
         return res.status(405).json({ status: 'error', message: 'Method Not Allowed' });
     }
 
-    const userId = parseInt(req.query.user_id || req.body?.user_id, 10) || 0;
-    if (!ADMIN_IDS.includes(userId)) {
+    const auth = authenticateRequest(req);
+    if (!auth.authenticated) {
+        return res.status(401).json({ status: 'error', message: 'Требуется авторизация через Telegram' });
+    }
+    if (auth.role !== 'admin') {
         return res.status(403).json({ status: 'error', message: 'Доступно только администратору' });
     }
 

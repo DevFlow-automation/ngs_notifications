@@ -39,7 +39,6 @@
         background-size: 24px 24px;
         background-attachment: fixed;
     }
-    }
         
         /* Стилизация скроллбара */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -329,6 +328,23 @@
         let userRole = 'none';
         let userClass = null;
 
+        function apiHeaders(extra = {}) {
+            const headers = { ...extra };
+            if (tg && tg.initData) {
+                headers['X-Telegram-Init-Data'] = tg.initData;
+            }
+            return headers;
+        }
+
+        function escapeHtml(val) {
+            return String(val ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         let currentClassData = [];
         let editingParentId = null;
         let isCreatingNew = false;
@@ -356,17 +372,19 @@
 
         async function initApp() {
             try {
-                const response = await fetch(`/api/me?user_id=${userId}`);
+                const response = await fetch('/api/me', { headers: apiHeaders() });
                 const data = await response.json();
                 userRole = data.role;
                 userClass = data.class;
 
                 if (userRole === 'none') {
-                    document.body.innerHTML = `<div class="flex items-center justify-center h-screen"><div class="bg-white p-8 rounded-2xl shadow-sm ring-1 ring-slate-200 text-center"><i class="ph-fill ph-lock-key text-4xl text-rose-500 mb-3"></i><h2 class="text-slate-900 font-bold text-xl mb-1">Доступ закрыт</h2><p class="text-slate-500 text-sm">Ваш Telegram ID: <span class="font-mono bg-slate-100 px-1 rounded">${userId}</span></p></div></div>`;
+                    document.body.innerHTML = `<div class="flex items-center justify-center h-screen"><div class="bg-white p-8 rounded-2xl shadow-sm ring-1 ring-slate-200 text-center"><i class="ph-fill ph-lock-key text-4xl text-rose-500 mb-3"></i><h2 class="text-slate-900 font-bold text-xl mb-1">Доступ закрыт</h2><p class="text-slate-500 text-sm">Ваш Telegram ID: <span class="font-mono bg-slate-100 px-1 rounded">${escapeHtml(userId)}</span></p></div></div>`;
                     return;
                 }
 
-                document.getElementById('btn_export').href = `/api/export?user_id=${userId}`;
+                if (data.export_token) {
+                    document.getElementById('btn_export').href = `/api/export?token=${encodeURIComponent(data.export_token)}`;
+                }
 
                 if (userRole === 'admin') {
                     document.getElementById('admin_bot_status_bar').classList.remove('hidden');
@@ -418,11 +436,11 @@
 
         async function loadClasses() {
             try {
-                const response = await fetch(`/api/classes?user_id=${userId}`);
+                const response = await fetch('/api/classes', { headers: apiHeaders() });
                 const data = await response.json();
                 const select = document.getElementById('class_select');
                 select.innerHTML = '<option value="">-- Выберите класс --</option>';
-                data.classes.forEach(cls => { select.appendChild(new Option(`Класс ${cls}`, cls)); });
+                (data.classes || []).forEach(cls => { select.appendChild(new Option(`Класс ${cls}`, cls)); });
             } catch (error) { console.error(error); }
         }
 
@@ -430,11 +448,11 @@
             const tbody = document.getElementById('history_tbody');
             tbody.innerHTML = '<tr><td colspan="6" class="text-center py-12 text-slate-400 font-medium"><i class="ph ph-spinner-gap animate-spin text-3xl mb-2 block mx-auto"></i> Загрузка...</td></tr>';
             try {
-                const response = await fetch(`/api/history?user_id=${userId}`);
+                const response = await fetch('/api/history', { headers: apiHeaders() });
                 const data = await response.json();
                 
                 tbody.innerHTML = '';
-                if (data.history.length === 0) {
+                if (!data.history || data.history.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="6" class="text-center py-12 text-slate-400 font-medium">История пуста</td></tr>';
                     return;
                 }
@@ -442,24 +460,30 @@
                 data.history.forEach((item, index) => {
                     const tr = document.createElement('tr');
                     
-                    let targetHtml = item.target;
+                    const rawTarget = String(item.target || '');
+                    const safeTarget = escapeHtml(rawTarget);
+                    const safeSender = escapeHtml(item.sender || '');
+                    const safeText = escapeHtml(item.text || '');
+                    const safeTime = escapeHtml(item.time || '').replace(' ', '<br>');
+                    const safeAck = Number(item.ack_count || 0);
+
                     let targetBadge = "";
-                    if (item.target === "Всем родителям") targetBadge = `<span class="bg-primary/10 text-primary text-xs px-2 py-0.5 rounded-full font-medium ml-2">Масс</span>`;
-                    else if (item.target.includes("Класс")) targetBadge = `<span class="bg-indigo-50 text-indigo-600 text-xs px-2 py-0.5 rounded-full font-medium ml-2">Класс</span>`;
-                    else if (item.target.includes("реб.")) targetBadge = `<span class="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full font-medium ml-2">ЛС</span>`;
+                    if (rawTarget === "Всем родителям") targetBadge = `<span class="bg-primary/10 text-primary text-xs px-2 py-0.5 rounded-full font-medium ml-2">Масс</span>`;
+                    else if (rawTarget.includes("Класс")) targetBadge = `<span class="bg-indigo-50 text-indigo-600 text-xs px-2 py-0.5 rounded-full font-medium ml-2">Класс</span>`;
+                    else if (rawTarget.includes("реб.")) targetBadge = `<span class="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full font-medium ml-2">ЛС</span>`;
                     else targetBadge = `<span class="bg-rose-50 text-rose-600 text-xs px-2 py-0.5 rounded-full font-medium ml-2">Статус</span>`;
 
                     tr.innerHTML = `
                         <td class="text-slate-400 font-medium text-xs">${index + 1}</td>
-                        <td class="font-medium text-slate-700">${item.sender}</td>
-                        <td class="font-medium text-slate-900 flex items-center">${targetHtml} ${targetBadge}</td>
-                        <td><div class="text-truncate relative cursor-default" title="${item.text.replace(/"/g, '&quot;')}">${item.text}</div></td>
+                        <td class="font-medium text-slate-700">${safeSender}</td>
+                        <td class="font-medium text-slate-900 flex items-center">${safeTarget} ${targetBadge}</td>
+                        <td><div class="text-truncate relative cursor-default" title="${safeText}">${safeText}</div></td>
                         <td class="text-center">
                             <span class="inline-flex items-center justify-center min-w-[2rem] px-2 py-1 bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20 rounded-full text-xs font-bold">
-                                ${item.ack_count}
+                                ${safeAck}
                             </span>
                         </td>
-                        <td class="text-right text-slate-500 text-xs">${item.time.replace(' ', '<br>')}</td>
+                        <td class="text-right text-slate-500 text-xs">${safeTime}</td>
                     `;
                     tbody.appendChild(tr);
                 });
@@ -470,9 +494,9 @@
             const tbody = document.getElementById('db_tbody');
             tbody.innerHTML = '<tr><td colspan="7" class="text-center py-12 text-slate-400 font-medium"><i class="ph ph-spinner-gap animate-spin text-3xl mb-2 block mx-auto"></i> Загрузка...</td></tr>';
             try {
-                const response = await fetch(`/api/parents?user_id=${userId}`);
+                const response = await fetch('/api/parents', { headers: apiHeaders() });
                 const data = await response.json();
-                currentDbData = data.parents;
+                currentDbData = data.parents || [];
                 filterDb();
             } catch (error) { tbody.innerHTML = '<tr><td colspan="7" class="text-center py-12 text-rose-500 font-medium">Ошибка загрузки</td></tr>'; }
         }
@@ -658,10 +682,10 @@
             }
 
             try {
-                const response = await fetch(`/api/check-bot-status?user_id=${userId}`, {
+                const response = await fetch('/api/check-bot-status', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: userId })
+                    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({})
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
@@ -728,7 +752,7 @@
                 const tr = document.createElement('tr');
                 const st = group.student_status || 'present';
                 const style = statusStyles[st] || statusStyles.present;
-                const parentIds = group.parents.map(p => p.id);
+                const parentIds = group.parents.map(p => Number(p.id)).filter(Number.isInteger);
                 const parentIdsAttr = parentIds.join(',');
                 const isMulti = group.parents.length > 1;
                 
@@ -738,12 +762,12 @@
                     let botBadgeHtml = '';
                     if (userRole === 'admin') {
                         const bMeta = botStatusMeta[p.bot_status || 'unknown'] || botStatusMeta.unknown;
-                        botBadgeHtml = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ring-1 ${bMeta.cls}"><i class="ph-fill ${bMeta.icon}"></i>${bMeta.label}</span>`;
+                        botBadgeHtml = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ring-1 ${bMeta.cls}"><i class="ph-fill ${bMeta.icon}"></i>${escapeHtml(bMeta.label)}</span>`;
                     }
                     return `
                         <div class="text-sm text-slate-500 flex flex-wrap items-center gap-1.5 mt-1">
                             <i class="ph ph-user text-slate-400 shrink-0"></i>
-                            <span>${p.parent_full_name || '—'}</span>
+                            <span>${escapeHtml(p.parent_full_name || '—')}</span>
                             ${botBadgeHtml}
                         </div>
                     `;
@@ -756,7 +780,7 @@
                 const tgIdCell = userRole === 'teacher' ? '' : `
                     <td class="text-xs text-slate-400 font-mono">
                         <div class="space-y-1.5">
-                            ${group.parents.map(p => `<div>${p.telegram_id}</div>`).join('')}
+                            ${group.parents.map(p => `<div>${escapeHtml(p.telegram_id || '—')}</div>`).join('')}
                         </div>
                     </td>
                 `;
@@ -766,9 +790,9 @@
                         <div class="space-y-2">
                             ${group.parents.map(p => `
                                 <div class="${isMulti ? 'pb-1.5 border-b border-slate-100 last:border-none last:pb-0' : ''}">
-                                    ${isMulti ? `<div class="text-[11px] font-semibold text-slate-400">${(p.parent_full_name || '').split(' ')[0] || 'Родитель'}</div>` : ''}
-                                    <div class="text-xs text-slate-500">${p.email || '—'}</div>
-                                    <div class="text-sm text-slate-700 font-medium">${p.phone || '—'}</div>
+                                    ${isMulti ? `<div class="text-[11px] font-semibold text-slate-400">${escapeHtml((p.parent_full_name || '').split(' ')[0] || 'Родитель')}</div>` : ''}
+                                    <div class="text-xs text-slate-500">${escapeHtml(p.email || '—')}</div>
+                                    <div class="text-sm text-slate-700 font-medium">${escapeHtml(p.phone || '—')}</div>
                                 </div>
                             `).join('')}
                         </div>
@@ -778,13 +802,18 @@
                 const actionsCell = userRole === 'teacher' ? '' : `
                     <td class="text-center">
                         <div class="space-y-1.5">
-                            ${group.parents.map(p => `
-                                <div class="flex items-center justify-center gap-1.5">
-                                    ${isMulti ? `<span class="text-[11px] text-slate-400 max-w-[80px] truncate" title="${(p.parent_full_name || '').replace(/"/g, '&quot;')}">${(p.parent_full_name || '').split(' ')[0] || `#${p.id}`}</span>` : ''}
-                                    <button onclick="openEditModal(${p.id}, false)" title="Редактировать: ${(p.parent_full_name || '').replace(/"/g, '&quot;')}" class="text-slate-400 hover:text-primary bg-slate-50 hover:bg-primary/10 p-1.5 rounded-md transition-colors"><i class="ph-fill ph-pencil-simple text-base"></i></button>
-                                    <button onclick="deleteParent(${p.id})" title="Удалить: ${(p.parent_full_name || '').replace(/"/g, '&quot;')}" class="text-slate-400 hover:text-rose-500 bg-slate-50 hover:bg-rose-50 p-1.5 rounded-md transition-colors"><i class="ph-fill ph-trash text-base"></i></button>
-                                </div>
-                            `).join('')}
+                            ${group.parents.map(p => {
+                                const safeId = Number(p.id) || 0;
+                                const safeName = escapeHtml(p.parent_full_name || '');
+                                const safeFirst = escapeHtml((p.parent_full_name || '').split(' ')[0] || `#${safeId}`);
+                                return `
+                                    <div class="flex items-center justify-center gap-1.5">
+                                        ${isMulti ? `<span class="text-[11px] text-slate-400 max-w-[80px] truncate" title="${safeName}">${safeFirst}</span>` : ''}
+                                        <button onclick="openEditModal(${safeId}, false)" title="Редактировать: ${safeName}" class="text-slate-400 hover:text-primary bg-slate-50 hover:bg-primary/10 p-1.5 rounded-md transition-colors"><i class="ph-fill ph-pencil-simple text-base"></i></button>
+                                        <button onclick="deleteParent(${safeId})" title="Удалить: ${safeName}" class="text-slate-400 hover:text-rose-500 bg-slate-50 hover:bg-rose-50 p-1.5 rounded-md transition-colors"><i class="ph-fill ph-trash text-base"></i></button>
+                                    </div>
+                                `;
+                            }).join('')}
                         </div>
                     </td>
                 `;
@@ -795,12 +824,12 @@
                     <td>
                         <div class="font-semibold text-slate-900 flex flex-wrap items-center gap-1.5">
                             <i class="ph-fill ph-student text-primary"></i>
-                            <span>${group.child_full_name}</span>
+                            <span>${escapeHtml(group.child_full_name)}</span>
                             ${multiBadge}
                         </div>
                         ${parentsListHtml}
                     </td>
-                    <td class="text-center"><span class="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold ring-1 ring-slate-200">${group.school_class}</span></td>
+                    <td class="text-center"><span class="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold ring-1 ring-slate-200">${escapeHtml(group.school_class)}</span></td>
                     <td class="px-4">
                         <select onchange="changeStatus('${parentIdsAttr}', this)" class="${selectClass}">
                             <option value="present" ${st === 'present' ? 'selected' : ''}>Присутствует</option>
@@ -824,9 +853,9 @@
             const originalStatus = currentDbData.find(p => ids.includes(p.id))?.student_status || 'present';
             
             try {
-                const response = await fetch(`/api/parents/${primaryId}/status?user_id=${userId}`, {
+                const response = await fetch(`/api/parents/${primaryId}/status`, {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: apiHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify({ status: newStatus, parent_ids: ids })
                 });
                 const result = await response.json();
@@ -867,9 +896,9 @@
             if (type === 'student' && className) {
                 studentSelect.innerHTML = '<option value="">Загрузка...</option>';
                 try {
-                    const response = await fetch(`/api/students/${className}?user_id=${userId}`);
+                    const response = await fetch(`/api/students/${encodeURIComponent(className)}`, { headers: apiHeaders() });
                     const data = await response.json();
-                    currentClassData = data.students;
+                    currentClassData = data.students || [];
                     studentSelect.innerHTML = '<option value="">-- Выберите ученика --</option>';
                     [...new Set(currentClassData.map(s => s.child_full_name))].forEach(name => {
                         studentSelect.appendChild(new Option(name, name));
@@ -913,18 +942,18 @@
             showStatus('<i class="ph ph-spinner animate-spin"></i> Отправка...', 'text-primary');
             try {
                 const response = await fetch('/api/send', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ target_type: targetType, target_value: targetValue, text: text, user_id: userId })
+                    method: 'POST', headers: apiHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({ target_type: targetType, target_value: targetValue, text: text })
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
                     const failedNote = (userRole === 'admin' && result.failed > 0)
-                        ? ` <span class="text-rose-600">(не доставлено: ${result.failed})</span>`
+                        ? ` <span class="text-rose-600">(не доставлено: ${Number(result.failed)})</span>`
                         : '';
-                    showStatus(`<i class="ph-fill ph-check-circle"></i> Успешно отправлено: ${result.count}${failedNote}`, 'text-emerald-600');
+                    showStatus(`<i class="ph-fill ph-check-circle"></i> Успешно отправлено: ${Number(result.count)}${failedNote}`, 'text-emerald-600');
                     document.getElementById('message').value = '';
                     setTimeout(() => switchTab('history'), 1500);
-                } else showStatus(result.message || 'Ошибка', 'text-rose-500');
+                } else showStatus(escapeHtml(result.message || 'Ошибка'), 'text-rose-500');
             } catch (e) { showStatus('Ошибка сети', 'text-rose-500'); }
         }
 
@@ -991,22 +1020,24 @@
                 if (isCreatingNew) {
                     data.telegram_id = parseInt(document.getElementById('edit_telegram_id').value);
                     if (!data.telegram_id) return alert('Введите Telegram ID');
-                    url = `/api/parents?user_id=${userId}`; method = 'POST';
+                    url = '/api/parents'; method = 'POST';
                 } else {
-                    url = `/api/parents/${editingParentId}?user_id=${userId}`; method = 'PUT';
+                    url = `/api/parents/${editingParentId}`; method = 'PUT';
                 }
 
-                const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-                if ((await response.json()).status === 'success') { closeEditModal(); loadDb(); } 
-                else alert('Ошибка сохранения');
+                const response = await fetch(url, { method, headers: apiHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data) });
+                const result = await response.json();
+                if (result.status === 'success') { closeEditModal(); loadDb(); } 
+                else alert(result.message || 'Ошибка сохранения');
             } catch (e) { alert('Ошибка сети'); }
         }
 
         async function deleteParent(id) {
             if (!confirm('Удалить профиль? Это действие необратимо.')) return;
             try {
-                const response = await fetch(`/api/parents/${id}?user_id=${userId}`, { method: 'DELETE' });
-                if ((await response.json()).status === 'success') loadDb(); else alert('Ошибка удаления');
+                const response = await fetch(`/api/parents/${id}`, { method: 'DELETE', headers: apiHeaders() });
+                const result = await response.json();
+                if (result.status === 'success') loadDb(); else alert(result.message || 'Ошибка удаления');
             } catch (e) { alert('Ошибка сети'); }
         }
 

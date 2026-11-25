@@ -1,23 +1,10 @@
 import { neon } from '@neondatabase/serverless';
 import { Api } from 'grammy';
+import { ADMIN_IDS, DEPUTY_IDS, TEACHERS, authenticateRequest } from '../lib/auth.js';
 
 const sql = neon(process.env.DATABASE_URL);
 const tgApi = process.env.BOT_TOKEN ? new Api(process.env.BOT_TOKEN) : null;
 const tgNameCache = new Map();
-
-const ADMIN_IDS = [8771384583, 229049117];
-const DEPUTY_IDS = [387863654, 21900086, 87180537, 32542185, 1759984801, 11763622, 1176641277, 117636223, 219000864, 875096987];
-const TEACHERS = {
-    593614259: "1А", 7475228092: "1Б", 165555820: "1В", 6759744115: "1Г",
-    262935335: "2А", 2067119625: "2Б", 192592122: "2В", 261773072: "2Г",
-    843534212: "3А", 83655322: "3Б", 1579165503: "3В", 1849602045: "3Г",
-    389444120: "4А", 8300203162: "4Б", 132622662: "4В",
-    267481288: "5А", 285756001: "5Б", 937544028: "5В",
-    127589326: "6А", 905178719: "6Б",
-    8885418064: "7А", 8099039998: "7Б", 144330475: "7В",
-    241743825: "8А", 42760022: "8Б",
-    1329417314: "9А", 124341010: "10А", 539135124: "11А"
-};
 
 async function getTelegramName(userId) {
     if (!tgApi || !userId) return null;
@@ -35,6 +22,10 @@ async function getTelegramName(userId) {
 
 export default async function handler(req, res) {
     if (req.method !== 'GET') return res.status(405).json({ error: "Method Not Allowed" });
+
+    const auth = authenticateRequest(req);
+    if (!auth.authenticated) return res.status(401).json({ error: "Требуется авторизация через Telegram" });
+    if (auth.role === 'none') return res.status(403).json({ error: "Нет доступа" });
 
     try {
         // 1. Получаем саму историю

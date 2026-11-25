@@ -1,35 +1,35 @@
 import { neon } from '@neondatabase/serverless';
-import { ADMIN_IDS, ensureBotStatusColumns } from '../../lib/botStatus.js';
+import { authenticateRequest, VALID_CLASSES } from '../../lib/auth.js';
+import { ensureBotStatusColumns } from '../../lib/botStatus.js';
 
 const sql = neon(process.env.DATABASE_URL);
 
 export default async function handler(req, res) {
-    // Получение всех родителей (GET)
-    if (req.method === 'GET') {
-        const userId = parseInt(req.query.user_id, 10) || 0;
-        const isAdmin = ADMIN_IDS.includes(userId);
-        const TEACHERS = {
-        593614259: "1А", 7475228092: "1Б", 165555820: "1В", 6759744115: "1Г",
-        262935335: "2А", 2067119625: "2Б", 192592122: "2В", 261773072: "2Г",
-        843534212: "3А", 83655322: "3Б", 1579165503: "3В", 1849602045: "3Г",
-        389444120: "4А", 8300203162: "4Б", 132622662: "4В",
-        267481288: "5А", 285756001: "5Б", 937544028: "5В",
-        127589326: "6А", 905178719: "6Б",
-        8885418064: "7А", 8099039998: "7Б", 144330475: "7В",
-        241743825: "8А", 42760022: "8Б",
-        1329417314: "9А", 124341010: "10А", 539135124: "11А"
-}; // Укажите ваших учителей
+    const auth = authenticateRequest(req);
+    if (!auth.authenticated) {
+        return res.status(401).json({ status: 'error', error: 'Требуется авторизация через Telegram' });
+    }
+    if (auth.role === 'none') {
+        return res.status(403).json({ status: 'error', error: 'Нет доступа' });
+    }
 
+    // Получение родителей (GET)
+    if (req.method === 'GET') {
         try {
             await ensureBotStatusColumns(sql);
-            let parents;
-            if (TEACHERS[userId]) {
-                const sClass = TEACHERS[userId];
-                parents = await sql`SELECT * FROM parents WHERE school_class = ${sClass} ORDER BY child_full_name, parent_full_name`;
-            } else {
-                parents = await sql`SELECT * FROM parents ORDER BY school_class, child_full_name, parent_full_name`;
+
+            if (auth.role === 'teacher') {
+                const parents = await sql`
+                    SELECT id, parent_full_name, child_full_name, school_class, student_status
+                    FROM parents
+                    WHERE school_class = ${auth.teacherClass}
+                    ORDER BY child_full_name, parent_full_name
+                `;
+                return res.status(200).json({ parents });
             }
-            // Преобразуем BigInt (telegram_id) в строку; статус бота отдаем только админу
+
+            const parents = await sql`SELECT * FROM parents ORDER BY school_class, child_full_name, parent_full_name`;
+            const isAdmin = auth.role === 'admin';
             const formatted = parents.map(p => {
                 if (isAdmin) {
                     return {
@@ -44,24 +44,44 @@ export default async function handler(req, res) {
             });
             return res.status(200).json({ parents: formatted });
         } catch (error) {
-            return res.status(500).json({ error: error.message });
+            console.error('Ошибка загрузки базы родителей:', error);
+            return res.status(500).json({ error: 'Ошибка загрузки данных' });
         }
     }
 
-    // Ручное добавление родителя (POST)
+    // Ручное добавление родителя (POST) — только админ и завуч
     if (req.method === 'POST') {
-        const { telegram_id, parent_full_name, child_full_name, school_class, email, phone, address } = req.body;
+        if (auth.role !== 'admin' && auth.role !== 'deputy') {
+            return res.status(403).json({ status: 'error', message: 'Недостаточно прав' });
+        }
+
+        const rawTgId = String(req.body?.telegram_id || '').trim();
+        const parentName = String(req.body?.parent_full_name || '').trim().slice(0, 200);
+        const childName = String(req.body?.child_full_name || '').trim().slice(0, 200);
+        const schoolClass = String(req.body?.school_class || '').trim().toUpperCase();
+        const email = String(req.body?.email || '').trim().slice(0, 200);
+        const phone = String(req.body?.phone || '').trim().slice(0, 50);
+        const address = String(req.body?.address || '').trim().slice(0, 300);
+
+        if (!/^\d{5,15}$/.test(rawTgId)) {
+            return res.status(400).json({ status: 'error', message: 'Некорректный Telegram ID' });
+        }
+        if (!parentName || !childName || !VALID_CLASSES.has(schoolClass)) {
+            return res.status(400).json({ status: 'error', message: 'Заполните ФИО родителя, ФИО ребенка и корректный класс' });
+        }
+
         try {
             await ensureBotStatusColumns(sql);
             await sql`
                 INSERT INTO parents (telegram_id, parent_full_name, child_full_name, school_class, email, phone, address, student_status, bot_status, bot_status_updated_at)
-                VALUES (${telegram_id}, ${parent_full_name}, ${child_full_name}, ${school_class}, ${email}, ${phone}, ${address}, 'present', 'not_started', NOW())
+                VALUES (${rawTgId}, ${parentName}, ${childName}, ${schoolClass}, ${email}, ${phone}, ${address}, 'present', 'not_started', NOW())
             `;
-            return res.status(200).json({ status: "success" });
+            return res.status(200).json({ status: 'success' });
         } catch (error) {
-            return res.status(500).json({ status: "error", message: error.message });
+            console.error('Ошибка добавления родителя:', error);
+            return res.status(500).json({ status: 'error', message: 'Ошибка сохранения в БД' });
         }
     }
 
-    return res.status(405).json({ error: "Method Not Allowed" });
+    return res.status(405).json({ error: 'Method Not Allowed' });
 }
